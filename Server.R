@@ -190,17 +190,6 @@ shinyServer(function(input, output,session) {
   })
   
   
-  #dataframe anterior filtrado por rango de fecha
-  rv_data_intervalo <- reactive({
-    if (input$amount == 'Todos'){
-      rv_predata_int()
-      
-    } else if (input$amount == 'Rango'){
-      rv_predata_int() %>%
-        subset(fecha >= input$range[1] & fecha <= input$range[2])
-    }
-  })
-  
   #Serie de tiempo por periodicidad con rango 
   ts_df_rv <- reactive({
     if (input$per == "diaria") {
@@ -778,7 +767,7 @@ shinyServer(function(input, output,session) {
     paste(input$camp, input$linea, sep = " ")
   })
   
-  # 3 Gráficas de analisis estacional mensual
+  # Gráficas de analisis estacional mensual
   output$boxmes_plot <- renderPlotly({
     monthorder<-c("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", 
                   "agosto", "septiembre", "octubre", "noviembre", "diciembre")
@@ -812,7 +801,7 @@ shinyServer(function(input, output,session) {
             barmode = 'group')
         plot2 %>% layout(legend=list(title=list(text="mes_b")))
         
-      } else if (input$ts_season == "Box-plot meses") {
+      } else if (input$ts_season == "Box-plot Meses") {
         df3 <- rv_data()
         df3$mes_b<-factor(df3$mes_b,levels = monthorder)
         plot3<-plot_ly(df3, x = ~mes_b, y = ~interpolado_real_calls, type = "box", jitter = 0.3, color = ~mes_b,marker = list(color = '#000000'),
@@ -857,7 +846,7 @@ shinyServer(function(input, output,session) {
               yaxis = list(title = tipo_dato()),
               barmode = 'group')
           plot2%>% layout(legend=list(title=list(text="mes_b")))
-        } else if (input$ts_season == "Box-plot meses") {
+        } else if (input$ts_season == "Box-plot Meses") {
           df3 <- rv_data()
           df3$mes_b<-factor(df3$mes_b,levels = monthorder)
           plot3<-plot_ly(df3, x = ~mes_b, y = ~interpolado_real_aht, type = "box", jitter = 0.3, color = ~mes_b,marker = list(color = '#000000'),
@@ -869,6 +858,77 @@ shinyServer(function(input, output,session) {
           
         }}
   })
+  
+  # Graficas analisis estacional por día de la semana
+  output$boxweek_plot <- renderPlotly({
+    weekorder <- c("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+    
+    if(input$tag == "Trafico"){
+      if (input$ts_season == "Por día de la semana") {
+        df <- rv_data() %>%
+          group_by(dia_semana, mes_b) %>%
+          summarise(interpolado_real_calls = sum(interpolado_real_calls))
+        df$dia_semana <- factor(df$dia_semana, levels = weekorder)
+        df <- df[order(match(df$dia_semana, weekorder)),]
+        plot1 <- plot_ly(df, x = ~dia_semana, y = ~interpolado_real_calls, color = ~factor(mes_b), 
+                         colors = c('#DA261E','#D1B2D1','#09B56B', '#5D0664', '#05ABAB'), 
+                         type = 'scatter', mode = 'lines') %>%
+          layout(
+            xaxis = list(title = "Día de la semana", categoryorder = "array",
+                         categoryarray = weekorder),
+            yaxis = list(title = tipo_dato())
+          )
+        
+        plot1 %>% layout(legend = list(title = list(text = "Mes")))
+        
+      } else if (input$ts_season == "Box-plot Semanal") {
+        df2 <- rv_data()
+        df2$dia_semana <- factor(df2$dia_semana, levels = weekorder)
+        plot2 <- plot_ly(df2, x = ~dia_semana, y = ~interpolado_real_calls, type = "box", jitter = 0.3, color = ~dia_semana, 
+                         marker = list(color = '#000000'),
+                         colors = c('#142066','#5D0664','#05ABAB')) %>%
+          layout(
+            xaxis = list(title = "Día de la semana"),
+            yaxis = list(title = tipo_dato())
+          )
+        plot2 %>% layout(legend = list(title = list(text = "Día de la semana")))
+      }
+    } else if(input$tag == "AHT"){
+      if (input$ts_season == "Por día de la semana") {
+        df <- rv_data() %>%
+          group_by(dia_semana, mes_b)  %>%
+          summarise(
+            call_aht_off = sum(interpolado_real_calls * interpolado_real_aht),
+            interacciones_off = sum(interpolado_real_calls)) %>%
+          mutate(interpolado_real_aht = (call_aht_off / interacciones_off))
+        df$dia_semana <- factor(df$dia_semana, levels = weekorder)
+        df <- df[order(match(df$dia_semana, weekorder)),]
+        plot1 <- plot_ly(df, x = ~dia_semana, y = ~interpolado_real_aht, color = ~factor(mes_b), 
+                         colors = c('#DA261E','#D1B2D1','#09B56B', '#5D0664', '#05ABAB'), 
+                         type = 'scatter', mode = 'lines') %>%
+          layout(
+            xaxis = list(title = "Día de la semana", categoryorder = "array",
+                         categoryarray = weekorder),
+            yaxis = list(title = tipo_dato())
+          )
+        
+        plot1 %>% layout(legend = list(title = list(text = "Mes")))
+        
+      } else if (input$ts_season == "Box-plot Semanal") {
+        df2 <- rv_data()
+        df2$dia_semana <- factor(df2$dia_semana, levels = weekorder)
+        plot2 <- plot_ly(df2, x = ~dia_semana, y = ~interpolado_real_aht, type = "box", jitter = 0.3, color = ~dia_semana, 
+                         marker = list(color = '#000000'),
+                         colors = c('#142066','#5D0664','#05ABAB')) %>%
+          layout(
+            xaxis = list(title = "Día de la semana"),
+            yaxis = list(title = tipo_dato())
+          )
+        plot2 %>% layout(legend = list(title = list(text = "Día de la semana")))
+      }
+    }
+  })
+  
   
   
   #Titulo analisis estacional
