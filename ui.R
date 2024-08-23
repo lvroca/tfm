@@ -45,10 +45,10 @@ data$negocio<- chartr("áéíóúÁÉÍÓÚ", "aeiouAEIOU", data$negocio)
 data$id <- paste(data$negocio, data$linea, sep = "-")
 
 # Importación datos validación
-validacion_diaria_calls <- read_excel("validacion_diaria_calls.xlsx")[ , c(6:14)]
+validacion_diaria_calls <- read_excel("validacion_diaria_calls.xlsx")
 validacion_diaria_calls = dplyr::rename(validacion_diaria_calls, real =interpolado_real_calls)
 validacion_diaria_calls$target <- "Trafico"
-validacion_diaria_aht <- read_excel("validacion_diaria_aht.xlsx")[ , c(6:14)]
+validacion_diaria_aht <- read_excel("validacion_diaria_aht.xlsx")
 validacion_diaria_aht = dplyr::rename(validacion_diaria_aht, real =interpolado_real_aht)
 validacion_diaria_aht$target <- "AHT"
 
@@ -67,8 +67,8 @@ validacion_diaria$pred_promedio <- ifelse(validacion_diaria$target == "Trafico",
                                           ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_promedio, 2), validacion_diaria$pred_promedio))
 validacion_diaria$pred_fb <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_fb, 0),
                                     ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_fb, 2), validacion_diaria$pred_fb))
-validacion_diaria$pred_promedio_mov <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_promedio_mov, 0),
-                                              ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_promedio_mov, 2), validacion_diaria$pred_promedio_mov))
+validacion_diaria$pred_gru <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_gru, 0),
+                                              ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_gru, 2), validacion_diaria$pred_gru))
 
 
 #Importación datos predicción
@@ -207,7 +207,7 @@ shinyUI(fluidPage(
             plotlyOutput("descompose_plot", height = "600px",width = "100%")
           ),
           tabPanel(
-            "Análisis estacional",
+            "Análisis estacional mensual",
             align = "center",
             textOutput("title_esta"),
             tags$head(tags$style('#title_esta{font-size:20px;font-style: normal;

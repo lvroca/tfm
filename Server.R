@@ -47,10 +47,10 @@ shinyServer(function(input, output,session) {
   data$id <- paste(data$negocio, data$linea, sep = "-")
   
   # Importación datos validación
-  validacion_diaria_calls <- read_excel("validacion_diaria_calls.xlsx")[ , c(6:14)]
+  validacion_diaria_calls <- read_excel("validacion_diaria_calls.xlsx")
   validacion_diaria_calls = dplyr::rename(validacion_diaria_calls, real = interpolado_real_calls)
   validacion_diaria_calls$target <- "Trafico"
-  validacion_diaria_aht <- read_excel("validacion_diaria_aht.xlsx")[ , c(6:14)]
+  validacion_diaria_aht <- read_excel("validacion_diaria_aht.xlsx")
   validacion_diaria_aht = dplyr::rename(validacion_diaria_aht, real =interpolado_real_aht)
   validacion_diaria_aht$target <- "AHT"
   
@@ -69,8 +69,8 @@ shinyServer(function(input, output,session) {
                                             ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_promedio, 2), validacion_diaria$pred_promedio))
   validacion_diaria$pred_fb <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_fb, 0),
                                       ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_fb, 2), validacion_diaria$pred_fb))
-  validacion_diaria$pred_promedio_mov <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_promedio_mov, 0),
-                                                ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_promedio_mov, 2), validacion_diaria$pred_promedio_mov))
+  validacion_diaria$pred_gru <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_gru, 0),
+                                                ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_gru, 2), validacion_diaria$pred_gru))
   
   #Importación datos predicción
   pred_diaria_calls <- read_excel("prediccion_calls.xlsx")[,-1]
@@ -189,6 +189,17 @@ shinyServer(function(input, output,session) {
     }
   })
   
+  
+  #dataframe anterior filtrado por rango de fecha
+  rv_data_intervalo <- reactive({
+    if (input$amount == 'Todos'){
+      rv_predata_int()
+      
+    } else if (input$amount == 'Rango'){
+      rv_predata_int() %>%
+        subset(fecha >= input$range[1] & fecha <= input$range[2])
+    }
+  })
   
   #Serie de tiempo por periodicidad con rango 
   ts_df_rv <- reactive({
@@ -861,16 +872,16 @@ shinyServer(function(input, output,session) {
   
   # Graficas analisis estacional por día de la semana
   output$boxweek_plot <- renderPlotly({
-    weekorder <- c("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+    weekorder <- c(0,1,2,3,4,5,6,7)
     
     if(input$tag == "Trafico"){
-      if (input$ts_season == "Por día de la semana") {
+      if (input$ts_season_dia == "Por año") {
         df <- rv_data() %>%
-          group_by(dia_semana, mes_b) %>%
+          group_by(dia_semana, año) %>%
           summarise(interpolado_real_calls = sum(interpolado_real_calls))
         df$dia_semana <- factor(df$dia_semana, levels = weekorder)
         df <- df[order(match(df$dia_semana, weekorder)),]
-        plot1 <- plot_ly(df, x = ~dia_semana, y = ~interpolado_real_calls, color = ~factor(mes_b), 
+        plot1 <- plot_ly(df, x = ~dia_semana, y = ~interpolado_real_calls, color = ~factor(año), 
                          colors = c('#DA261E','#D1B2D1','#09B56B', '#5D0664', '#05ABAB'), 
                          type = 'scatter', mode = 'lines') %>%
           layout(
@@ -879,9 +890,9 @@ shinyServer(function(input, output,session) {
             yaxis = list(title = tipo_dato())
           )
         
-        plot1 %>% layout(legend = list(title = list(text = "Mes")))
+        plot1 %>% layout(legend = list(title = list(text = "Año")))
         
-      } else if (input$ts_season == "Box-plot Semanal") {
+      } else if (input$ts_season == "Box-plot día semana") {
         df2 <- rv_data()
         df2$dia_semana <- factor(df2$dia_semana, levels = weekorder)
         plot2 <- plot_ly(df2, x = ~dia_semana, y = ~interpolado_real_calls, type = "box", jitter = 0.3, color = ~dia_semana, 
@@ -896,14 +907,14 @@ shinyServer(function(input, output,session) {
     } else if(input$tag == "AHT"){
       if (input$ts_season == "Por día de la semana") {
         df <- rv_data() %>%
-          group_by(dia_semana, mes_b)  %>%
+          group_by(dia_semana, año)  %>%
           summarise(
             call_aht_off = sum(interpolado_real_calls * interpolado_real_aht),
             interacciones_off = sum(interpolado_real_calls)) %>%
           mutate(interpolado_real_aht = (call_aht_off / interacciones_off))
         df$dia_semana <- factor(df$dia_semana, levels = weekorder)
         df <- df[order(match(df$dia_semana, weekorder)),]
-        plot1 <- plot_ly(df, x = ~dia_semana, y = ~interpolado_real_aht, color = ~factor(mes_b), 
+        plot1 <- plot_ly(df, x = ~dia_semana, y = ~interpolado_real_aht, color = ~factor(año), 
                          colors = c('#DA261E','#D1B2D1','#09B56B', '#5D0664', '#05ABAB'), 
                          type = 'scatter', mode = 'lines') %>%
           layout(
@@ -912,7 +923,7 @@ shinyServer(function(input, output,session) {
             yaxis = list(title = tipo_dato())
           )
         
-        plot1 %>% layout(legend = list(title = list(text = "Mes")))
+        plot1 %>% layout(legend = list(title = list(text = "Año")))
         
       } else if (input$ts_season == "Box-plot Semanal") {
         df2 <- rv_data()
@@ -974,7 +985,7 @@ shinyServer(function(input, output,session) {
                                                              pred_regr=sum(pred_regr),
                                                              pred_fb=sum(pred_fb),
                                                              pred_promedio=sum(pred_promedio),
-                                                             pred_promedio_mov = sum(pred_promedio_mov),
+                                                             pred_gru = sum(pred_gru),
                                                              fecha = min(fecha),
                                                              target = first(target))%>%
         arrange(fecha)%>%
@@ -988,7 +999,7 @@ shinyServer(function(input, output,session) {
                                                              pred_regr=mean(pred_regr),
                                                              pred_fb=mean(pred_fb),
                                                              pred_promedio=mean(pred_promedio),
-                                                             pred_promedio_mov=mean(pred_promedio_mov),
+                                                             pred_gru=mean(pred_gru),
                                                              fecha = min(fecha),
                                                              target = first(target))%>%
         ungroup()
@@ -1006,7 +1017,7 @@ shinyServer(function(input, output,session) {
                                                                          pred_regr=sum(pred_regr),
                                                                          pred_fb=sum(pred_fb),
                                                                          pred_promedio=sum(pred_promedio),
-                                                                         pred_promedio_mov=sum(pred_promedio_mov),
+                                                                         pred_gru=sum(pred_gru),
                                                                          fecha = min(fecha),
                                                                          target = first(target))%>%
         ungroup()
@@ -1019,7 +1030,7 @@ shinyServer(function(input, output,session) {
                                                                          pred_regr=mean(pred_regr),
                                                                          pred_fb=mean(pred_fb),
                                                                          pred_promedio=mean(pred_promedio),
-                                                                         pred_promedio_mov=mean(pred_promedio_mov),
+                                                                         pred_gru=mean(pred_gru),
                                                                          fecha = min(fecha),
                                                                          target = first(target))%>%
         ungroup()
@@ -1057,20 +1068,20 @@ shinyServer(function(input, output,session) {
     Sys.setlocale("LC_TIME", "es_ES.utf8")
     if (input$per2 == "diaria"){
       df <- rv_val_dia() %>%
-        pivot_longer(cols = c(real, pred_ts,pred_regr,pred_promedio,pred_fb,pred_promedio_mov), names_to = "modelo", values_to = "Valor")
+        pivot_longer(cols = c(real, pred_ts,pred_regr,pred_promedio,pred_fb,pred_gru), names_to = "modelo", values_to = "Valor")
       df$modelo<-as.factor(df$modelo)
-      df$modelo <- factor(df$modelo, levels = c("real","pred_ts","pred_regr","pred_promedio","pred_fb","pred_promedio_mov"))
-      levels(df$modelo) <- c("Real","Time Series","Regresión","Promedio TS-R","Facebook Prophet","Promedio Movil")
+      df$modelo <- factor(df$modelo, levels = c("real","pred_ts","pred_regr","pred_promedio","pred_fb","pred_gru"))
+      levels(df$modelo) <- c("Real","Time Series","Regresión","Promedio TS-R","Facebook Prophet","GRU")
       df$fecha <- format(df$fecha, "%d %b %Y")
       df$fecha <- factor(df$fecha, levels = unique(df$fecha))
       plot_ly(df,x = ~fecha, y = ~Valor, color = ~modelo, type = 'scatter', mode = 'lines+markers', colors = c('#DA261E','#D1B2D1','#09B56B', '#5D0664', '#05ABAB', '#81CBF5')) %>% 
         layout(legend=list(title=list(text='modelo')), xaxis = list(title = "fecha",dtick=15), yaxis = list(title = tipo_dato2()))
     }else if (input$per2 == "mensual"){
       df <- rv_val_mes() %>%
-        pivot_longer(cols = c(real, pred_ts,pred_regr,pred_promedio,pred_fb, pred_promedio_mov), names_to = "modelo", values_to = "Valor")
+        pivot_longer(cols = c(real, pred_ts,pred_regr,pred_promedio,pred_fb, pred_gru), names_to = "modelo", values_to = "Valor")
       df$modelo<-as.factor(df$modelo)
-      df$modelo <- factor(df$modelo, levels = c("real","pred_ts","pred_regr","pred_promedio","pred_fb","pred_promedio_mov"))
-      levels(df$modelo) <- c("Real","Time Series","Regresión","Promedio TS-R","Facebook Prophet","Promedio Movil")
+      df$modelo <- factor(df$modelo, levels = c("real","pred_ts","pred_regr","pred_promedio","pred_fb","pred_gru"))
+      levels(df$modelo) <- c("Real","Time Series","Regresión","Promedio TS-R","Facebook Prophet","GRU")
       df$fecha <- format(df$fecha, "%d %b %Y")
       df$fecha <- factor(df$fecha, levels = unique(df$fecha))
       plot_ly(df,x = ~fecha, y = ~Valor, color = ~modelo, type = 'scatter', mode = 'lines+markers', colors = c('#DA261E','#D1B2D1','#09B56B', '#5D0664', '#05ABAB', '#81CBF5')) %>% 
@@ -1078,10 +1089,10 @@ shinyServer(function(input, output,session) {
     }
     else if (input$per2 == "semanal"){
       df <- rv_val_semanal() %>%
-        pivot_longer(cols = c(real, pred_ts,pred_regr,pred_promedio,pred_fb, pred_promedio_mov), names_to = "modelo", values_to = "Valor")
+        pivot_longer(cols = c(real, pred_ts,pred_regr,pred_promedio,pred_fb, pred_gru), names_to = "modelo", values_to = "Valor")
       df$modelo<-as.factor(df$modelo)
-      df$modelo <- factor(df$modelo, levels = c("real","pred_ts","pred_regr","pred_promedio","pred_fb","pred_promedio_mov"))
-      levels(df$modelo) <- c("Real","Time Series","Regresión","Promedio TS-R","Facebook Prophet","Promedio Movil")
+      df$modelo <- factor(df$modelo, levels = c("real","pred_ts","pred_regr","pred_promedio","pred_fb","pred_gru"))
+      levels(df$modelo) <- c("Real","Time Series","Regresión","Promedio TS-R","Facebook Prophet","GRU")
       df$fecha <- format(df$fecha, "%d %b %Y")
       df$fecha <- factor(df$fecha, levels = unique(df$fecha))
       plot_ly(df,x = ~fecha, y = ~Valor, color = ~modelo, type = 'scatter', mode = 'lines+markers', colors = c('#DA261E','#D1B2D1','#09B56B', '#5D0664', '#05ABAB', '#81CBF5')) %>% 
@@ -1100,16 +1111,16 @@ shinyServer(function(input, output,session) {
     Reg<-round(wape(actuals=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$real, preds=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$pred_regr),2)
     Promedio<-round(wape(actuals=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$real, preds=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$pred_promedio),2)
     Facebook<-round(wape(actuals=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$real, preds=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$pred_fb),2)
-    Promedio_movil<-round(wape(actuals=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$real, preds=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$pred_promedio_mov),2)
+    Promedio_movil<-round(wape(actuals=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$real, preds=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$pred_gru),2)
     
     TS2<-round(mae(actuals=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$real, preds=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$pred_ts),2)
     Reg2<-round(mae(actuals=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$real, preds=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$pred_regr),2)
     Promedio2<-round(mae(actuals=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$real,preds= val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$pred_promedio),2)
     Facebook2<-round(mae(actuals=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$real, preds=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$pred_fb),2)
-    Promedio_movil2<-round(mae(actuals=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$real, preds=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$pred_promedio_mov),2)
+    Promedio_movil2<-round(mae(actuals=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$real, preds=val_mes()[val_mes()$linea == input$linea2 & val_mes()$target == input$tag2,]$pred_gru),2)
     
     valores <- c(TS, Reg, Promedio, Facebook)
-    nombres <- c("TS", "Reg", "Promedio TS-R", "Facebook", "Promedio Movil")
+    nombres <- c("TS", "Reg", "Promedio TS-R", "Facebook", "GRU")
     indice_minimo <- which.min(valores)
     valores2 <- c(TS2, Reg2, Promedio2, Facebook2, Promedio_movil2)
     indice_minimo2 <- which.min(valores)
@@ -1119,16 +1130,16 @@ shinyServer(function(input, output,session) {
       Reg<-round(wape(actuals=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$real, preds=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$pred_regr),2)
       Promedio<-round(wape(actuals=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$real, preds=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$pred_promedio),2)
       Facebook<-round(wape(actuals=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$real, preds=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$pred_fb),2)
-      Promedio_movil<-round(wape(actuals=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$real, preds=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$pred_promedio_mov),2)
+      Promedio_movil<-round(wape(actuals=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$real, preds=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$pred_gru),2)
       
       TS2<-round(mae(actuals=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$real, preds=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$pred_ts),2)
       Reg2<-round(mae(actuals=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$real, preds=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$pred_regr),2)
       Promedio2<-round(mae(actuals=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$real,preds= validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$pred_promedio),2)
       Facebook2<-round(mae(actuals=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$real, preds=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$pred_fb),2)
-      Promedio_movil2<-round(mae(actuals=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$real, preds=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$pred_promedio_mov),2)
+      Promedio_movil2<-round(mae(actuals=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$real, preds=validacion_diaria[validacion_diaria$linea == input$linea2 & validacion_diaria$target == input$tag2,]$pred_gru),2)
       
       valores <- c(TS, Reg, Promedio, Facebook)
-      nombres <- c("TS", "Reg", "Promedio TS-R", "Facebook", "Promedio Movil")
+      nombres <- c("TS", "Reg", "Promedio TS-R", "Facebook", "GRU")
       indice_minimo <- which.min(valores)
       valores2 <- c(TS2, Reg2, Promedio2, Facebook2, Promedio_movil2)
       indice_minimo2 <- which.min(valores)
@@ -1139,16 +1150,16 @@ shinyServer(function(input, output,session) {
       Reg<-round(wape(actuals=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$real, preds=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$pred_regr),2)
       Promedio<-round(wape(actuals=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$real, preds=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$pred_promedio),2)
       Facebook<-round(wape(actuals=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$real, preds=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$pred_fb),2)
-      Promedio_movil<-round(wape(actuals=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$real, preds=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$pred_promedio_mov),2)
+      Promedio_movil<-round(wape(actuals=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$real, preds=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$pred_gru),2)
       
       TS2<-round(mae(actuals=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$real, preds=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$pred_ts),2)
       Reg2<-round(mae(actuals=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$real, preds=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$pred_regr),2)
       Promedio2<-round(mae(actuals=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$real,preds= val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$pred_promedio),2)
       Facebook2<-round(mae(actuals=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$real, preds=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$pred_fb),2)
-      Promedio_movil2<-round(mae(actuals=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$real, preds=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$pred_promedio_mov),2)
+      Promedio_movil2<-round(mae(actuals=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$real, preds=val_semanal()[val_semanal()$linea == input$linea2 & val_semanal()$target == input$tag2,]$pred_gru),2)
       
       valores <- c(TS, Reg, Promedio, Facebook)
-      nombres <- c("TS", "Reg", "Promedio TS-R", "Facebook", "Promedio Movil")
+      nombres <- c("TS", "Reg", "Promedio TS-R", "Facebook", "GRU")
       indice_minimo <- which.min(valores)
       valores2 <- c(TS2, Reg2, Promedio2, Facebook2, Promedio_movil2)
       indice_minimo2 <- which.min(valores)
@@ -1188,8 +1199,8 @@ shinyServer(function(input, output,session) {
           fig %>% add_trace(y = ~pred_promedio, name = 'Promedio TS-R', type = 'scatter', mode = 'lines+markers',line=list(color = '#05ABAB'), marker=list(color = '#05ABAB')) 
         }else if(tabla$modelo == "Facebook"){
           fig %>% add_trace(y = ~pred_fb, name = 'Facebook Prophet', type = 'scatter', mode = 'lines+markers',line=list(color = '#05ABAB'), marker=list(color = '#05ABAB')) 
-        }else if(tabla$modelo == "Promedio Movil"){
-          fig %>% add_trace(y = ~pred_promedio_mov, name = 'Promedio movil', type = 'scatter', mode = 'lines+markers',line=list(color = '#05ABAB'), marker=list(color = '#05ABAB')) 
+        }else if(tabla$modelo == "GRU"){
+          fig %>% add_trace(y = ~pred_gru, name = 'GRU', type = 'scatter', mode = 'lines+markers',line=list(color = '#05ABAB'), marker=list(color = '#05ABAB')) 
         }
       }else if (input$per2 == "mensual"){
         tabla <- tabla_val()
@@ -1206,8 +1217,8 @@ shinyServer(function(input, output,session) {
           fig %>% add_trace(y = ~pred_promedio, name = 'Promedio TS-R', type = 'scatter', mode = 'lines+markers',line=list(color = '#05ABAB'), marker=list(color = '#05ABAB')) 
         }else if(tabla$modelo == "Facebook"){
           fig %>% add_trace(y = ~pred_fb, name = 'Facebook Prophet', type = 'scatter', mode = 'lines+markers',line=list(color = '#05ABAB'), marker=list(color = '#05ABAB')) 
-        }else if(tabla$modelo == "Promedio Movil"){
-          fig %>% add_trace(y = ~pred_promedio_mov, name = 'Promedio movil', type = 'scatter', mode = 'lines+markers',line=list(color = '#05ABAB'), marker=list(color = '#05ABAB')) 
+        }else if(tabla$modelo == "GRU"){
+          fig %>% add_trace(y = ~pred_gru, name = 'GRU', type = 'scatter', mode = 'lines+markers',line=list(color = '#05ABAB'), marker=list(color = '#05ABAB')) 
         }
       }
       else if (input$per2 == "semanal"){
@@ -1225,8 +1236,8 @@ shinyServer(function(input, output,session) {
           fig %>% add_trace(y = ~pred_promedio, name = 'Promedio TS-R', type = 'scatter', mode = 'lines+markers',line=list(color = '#05ABAB'), marker=list(color = '#05ABAB')) 
         }else if(tabla$modelo == "Facebook"){
           fig %>% add_trace(y = ~pred_fb, name = 'Facebook', type = 'scatter', mode = 'lines',line=list(color = '#05ABAB'), marker=list(color = '#05ABAB')) 
-        }else if(tabla$modelo == "Promedio Movil"){
-          fig %>% add_trace(y = ~pred_promedio_mov, name = 'Promedio movil', type = 'scatter', mode = 'lines+markers',line=list(color = '#05ABAB'), marker=list(color = '#05ABAB')) 
+        }else if(tabla$modelo == "GRU"){
+          fig %>% add_trace(y = ~pred_gru, name = 'GRU', type = 'scatter', mode = 'lines+markers',line=list(color = '#05ABAB'), marker=list(color = '#05ABAB')) 
         }
       }
   })
