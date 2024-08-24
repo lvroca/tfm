@@ -76,6 +76,7 @@ pred_diaria_calls <- read_excel("prediccion_calls.xlsx")[,-1]
 pred_diaria_calls$target <- "Trafico"
 pred_diaria_aht <- read_excel("prediccion_aht.xlsx")[,-1]
 pred_diaria_aht$target <- "AHT"
+pred_diaria_aht <- pred_diaria_aht %>% select(-interpolado_real_calls)
 
 # Configuración y modificaciones a datos prediccion
 pred_diaria <- rbind(pred_diaria_calls, pred_diaria_aht)
@@ -133,9 +134,7 @@ shinyUI(fluidPage(
   navbarPage(
     # Application title.
     title ="ABC PROPHET" ,
-    # Filtros
-    
-    
+
     tabPanel(
       "Descripción",
       fluidRow(
@@ -215,6 +214,16 @@ shinyUI(fluidPage(
             plotlyOutput("separadorrr", height = "20px"),
             prettyRadioButtons("ts_season", "Gráficos:", c("Por año", "Por mes", "Box-plot Meses"), inline = TRUE),
             plotlyOutput("boxmes_plot", height = "400px",width = "100%")
+          ),
+          tabPanel(
+            "Análisis estacional dia-semana",
+            align = "center",
+            textOutput("title_esta_dia"),
+            tags$head(tags$style('#title_esta_dia{font-size:20px;font-style: normal;
+                                       font-family: "Calibri";font-weight: bold;}')),
+            plotlyOutput("separadorrr_dia", height = "20px"),
+            prettyRadioButtons("ts_season_dia", "Gráficos:", c("Por año", "Por mes", "Box-plot día semana"), inline = TRUE),
+            plotlyOutput("boxweek_plot", height = "400px",width = "100%")
           ),
         )
     )

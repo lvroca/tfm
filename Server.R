@@ -77,6 +77,7 @@ shinyServer(function(input, output,session) {
   pred_diaria_calls$target <- "Trafico"
   pred_diaria_aht <- read_excel("prediccion_aht.xlsx")[,-1]
   pred_diaria_aht$target <- "AHT"
+  pred_diaria_aht <- pred_diaria_aht %>% select(-interpolado_real_calls)
   
   # Configuración y modificaciones a datos prediccion
   pred_diaria <- rbind(pred_diaria_calls, pred_diaria_aht)
@@ -170,13 +171,6 @@ shinyServer(function(input, output,session) {
     
   })
   
-  #Data_intervalo filtrado por camapaña y línea
-  rv_predata_int <- reactive({
-    data_intervalo %>%
-      subset(negocio == input$camp) %>%
-      subset(linea == input$linea) 
-    
-  })
   
   #dataframe anterior filtrado por rango de fecha
   rv_data <- reactive({
@@ -185,18 +179,6 @@ shinyServer(function(input, output,session) {
       
     } else if (input$amount == 'Rango'){
       rv_predata() %>%
-        subset(fecha >= input$range[1] & fecha <= input$range[2])
-    }
-  })
-  
-  
-  #dataframe anterior filtrado por rango de fecha
-  rv_data_intervalo <- reactive({
-    if (input$amount == 'Todos'){
-      rv_predata_int()
-      
-    } else if (input$amount == 'Rango'){
-      rv_predata_int() %>%
         subset(fecha >= input$range[1] & fecha <= input$range[2])
     }
   })
@@ -872,29 +854,31 @@ shinyServer(function(input, output,session) {
   
   # Graficas analisis estacional por día de la semana
   output$boxweek_plot <- renderPlotly({
-    weekorder <- c(0,1,2,3,4,5,6,7)
+    day_labels <- c("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo", "Festivo")
+    monthorder<-c("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", 
+                  "agosto", "septiembre", "octubre", "noviembre", "diciembre")
     
     if(input$tag == "Trafico"){
       if (input$ts_season_dia == "Por año") {
         df <- rv_data() %>%
           group_by(dia_semana, año) %>%
           summarise(interpolado_real_calls = sum(interpolado_real_calls))
-        df$dia_semana <- factor(df$dia_semana, levels = weekorder)
-        df <- df[order(match(df$dia_semana, weekorder)),]
+        
+        df$dia_semana <- factor(df$dia_semana, labels = day_labels)
+        
         plot1 <- plot_ly(df, x = ~dia_semana, y = ~interpolado_real_calls, color = ~factor(año), 
                          colors = c('#DA261E','#D1B2D1','#09B56B', '#5D0664', '#05ABAB'), 
-                         type = 'scatter', mode = 'lines') %>%
+                         type = 'scatter', mode = "lines+markers") %>%
           layout(
             xaxis = list(title = "Día de la semana", categoryorder = "array",
-                         categoryarray = weekorder),
+                         categoryarray = day_labels),
             yaxis = list(title = tipo_dato())
           )
         
-        plot1 %>% layout(legend = list(title = list(text = "Año")))
         
-      } else if (input$ts_season == "Box-plot día semana") {
+      } else if (input$ts_season_dia == "Box-plot día semana") {
         df2 <- rv_data()
-        df2$dia_semana <- factor(df2$dia_semana, levels = weekorder)
+        df2$dia_semana <- factor(df2$dia_semana,labels=day_labels )
         plot2 <- plot_ly(df2, x = ~dia_semana, y = ~interpolado_real_calls, type = "box", jitter = 0.3, color = ~dia_semana, 
                          marker = list(color = '#000000'),
                          colors = c('#142066','#5D0664','#05ABAB')) %>%
@@ -903,32 +887,60 @@ shinyServer(function(input, output,session) {
             yaxis = list(title = tipo_dato())
           )
         plot2 %>% layout(legend = list(title = list(text = "Día de la semana")))
+      } else if (input$ts_season_dia == "Por mes") {
+        df <-rv_data() %>%
+          group_by(mes_b, dia_semana) %>%
+          summarise(interpolado_real_calls = sum(interpolado_real_calls))
+        
+        df$mes_b<-factor(df$mes_b,levels = monthorder)
+        df$dia_semana <- factor(df$dia_semana, labels = day_labels)
+        
+        plot2 <- plot_ly(df, x = ~mes_b, y = ~interpolado_real_calls, color = ~dia_semana, colors = c('#142066','#5D0664','#05ABAB'), type = 'bar') %>%
+          layout(
+            xaxis = list(title = "mes"),
+            yaxis = list(title = tipo_dato()),
+            barmode = 'group')
       }
     } else if(input$tag == "AHT"){
-      if (input$ts_season == "Por día de la semana") {
+      if (input$ts_season_dia == "Por año") {
         df <- rv_data() %>%
           group_by(dia_semana, año)  %>%
           summarise(
             call_aht_off = sum(interpolado_real_calls * interpolado_real_aht),
             interacciones_off = sum(interpolado_real_calls)) %>%
           mutate(interpolado_real_aht = (call_aht_off / interacciones_off))
-        df$dia_semana <- factor(df$dia_semana, levels = weekorder)
-        df <- df[order(match(df$dia_semana, weekorder)),]
+        
+        df$dia_semana <- factor(df$dia_semana, labels = day_labels)
+        
         plot1 <- plot_ly(df, x = ~dia_semana, y = ~interpolado_real_aht, color = ~factor(año), 
                          colors = c('#DA261E','#D1B2D1','#09B56B', '#5D0664', '#05ABAB'), 
-                         type = 'scatter', mode = 'lines') %>%
+                         type = 'scatter', mode = "lines+markers") %>%
           layout(
             xaxis = list(title = "Día de la semana", categoryorder = "array",
-                         categoryarray = weekorder),
+                         categoryarray = day_labels),
             yaxis = list(title = tipo_dato())
           )
         
-        plot1 %>% layout(legend = list(title = list(text = "Año")))
+      } else if (input$ts_season_dia == "Por mes") {
+        df <- rv_data() %>%
+          group_by(dia_semana, mes_b)  %>%
+          summarise(
+            call_aht_off = sum(interpolado_real_calls * interpolado_real_aht),
+            interacciones_off = sum(interpolado_real_calls)) %>%
+          mutate(interpolado_real_aht = (call_aht_off / interacciones_off))
         
-      } else if (input$ts_season == "Box-plot Semanal") {
-        df2 <- rv_data()
-        df2$dia_semana <- factor(df2$dia_semana, levels = weekorder)
-        plot2 <- plot_ly(df2, x = ~dia_semana, y = ~interpolado_real_aht, type = "box", jitter = 0.3, color = ~dia_semana, 
+        df$mes_b<-factor(df$mes_b,levels = monthorder)
+        df$dia_semana <- factor(df$dia_semana, labels = day_labels)
+        
+        plot2 <- plot_ly(df, x = ~mes_b, y = ~interpolado_real_aht, color = ~dia_semana, colors = c('#142066','#5D0664','#05ABAB'), type = 'bar') %>%
+          layout(
+            xaxis = list(title = "mes"),
+            yaxis = list(title = tipo_dato()),
+            barmode = 'group')
+      }else if (input$ts_season_dia == "Box-plot día semana") {
+        df <- rv_data() 
+        df$dia_semana <- factor(df$dia_semana,labels=day_labels )
+        plot2 <- plot_ly(df, x = ~dia_semana, y = ~interpolado_real_aht, type = "box", jitter = 0.3, color = ~dia_semana, 
                          marker = list(color = '#000000'),
                          colors = c('#142066','#5D0664','#05ABAB')) %>%
           layout(
@@ -945,6 +957,10 @@ shinyServer(function(input, output,session) {
   #Titulo analisis estacional
   output$title_esta <- renderText({
     paste("Análisis de estacionalidad mensual", "-", input$camp, input$linea, sep = " ")
+  })
+  
+  output$title_esta_dia <- renderText({
+    paste("Análisis de estacionalidad día de la semana", "-", input$camp, input$linea, sep = " ")
   })
   
   
@@ -1276,8 +1292,12 @@ shinyServer(function(input, output,session) {
     }else if (input$tag3=="AHT"){
       pred_aht<-filter(pred_diaria,target == "AHT") %>%
         select(fecha,linea,negocio,target,prediccion)
+      pred_inter<-filter(pred_diaria,target == "Trafico") %>%
+        select(fecha,linea,negocio,prediccion)
+      
+      df_pred<-merge(pred_aht,pred_inter,by =c("fecha","linea","negocio"))
       df_pred[is.na(df_pred)] <- 0
-      df_pred_mes<- df_pred %>% 
+      df_pred_mes<- pred_aht %>% 
         mutate(año = format(fecha, "%Y"),mes = format(fecha, "%m")) %>% 
         group_by(año,mes,negocio,linea,target) %>% summarise(calls_aht = sum(prediccion.x*prediccion.y),
                                                              Interacciones=sum(prediccion.y),
@@ -1960,7 +1980,7 @@ shinyServer(function(input, output,session) {
       df_pre_aht <- df_pre_ajus_desv_aht() %>%
         pivot_wider(names_from = mes_abr, values_from = desv_aht)
       df_pre_aht <- arrange(df_pre_aht, año)
-      df_pre_aht1<- select(df_pre, año, ene., feb., mar., abr., may., jun.,
+      df_pre_aht1<- select(df_pre_aht, año, ene., feb., mar., abr., may., jun.,
                            jul., ago., sep., oct., nov., dic.)
       return(df_pre_aht1)
       
