@@ -373,6 +373,29 @@ shinyUI(fluidPage(
             downloadButton("exportButton", "Exportar"),
             DTOutput(outputId = "table_pred")
           ),
+          tabPanel(
+            "Ajuste de predicción",
+            align= "center",
+            textOutput("title_pred_plot_ajmes"),
+            tags$head(tags$style('#title_pred_plot_ajmes{font-size:20px;font-style: normal;
+                                                    font-family: "Calibri";font-weight: bold;}')),
+            plotlyOutput("plot", height = "200px",width = "100%"),
+            textOutput("title_tabla_aj"),
+            tags$head(tags$style('#title_tabla_aj{font-size:18px;font-style: normal;
+                                                    font-family: "Calibri";font-weight: bold;}')),
+            checkboxInput("aplicar_a_todos", "Aplicar a todos los meses en adelante"),
+            DTOutput("tabla", width= "100%"),
+            textOutput("title_tabladesv_aj"),
+            tags$head(tags$style('#title_tabladesv_aj{font-size:18px;font-style: normal;
+                                                    font-family: "Calibri";font-weight: bold;}')),
+            DTOutput(outputId = "Ajuste_pre_tabladesv", width= "100%"),
+            textOutput("title_resultado_aj"),
+            tags$head(tags$style('#title_resultado_aj{font-size:18px;font-style: normal;
+                                                    font-family: "Calibri";font-weight: bold;}')),
+            actionButton("btn_diario1", "Cambiar a vista diaria"),
+            downloadButton("exportButton1", "Exportar"),
+            dataTableOutput(outputId = "resultado", width= "100%")
+          )
         )
       )
     ),

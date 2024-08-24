@@ -794,7 +794,7 @@ shinyServer(function(input, output,session) {
             barmode = 'group')
         plot2 %>% layout(legend=list(title=list(text="mes_b")))
         
-      } else if (input$ts_season == "Box-plot Meses") {
+      } else if (input$ts_season == "Box-plot meses") {
         df3 <- rv_data()
         df3$mes_b<-factor(df3$mes_b,levels = monthorder)
         plot3<-plot_ly(df3, x = ~mes_b, y = ~interpolado_real_calls, type = "box", jitter = 0.3, color = ~mes_b,marker = list(color = '#000000'),
@@ -839,7 +839,7 @@ shinyServer(function(input, output,session) {
               yaxis = list(title = tipo_dato()),
               barmode = 'group')
           plot2%>% layout(legend=list(title=list(text="mes_b")))
-        } else if (input$ts_season == "Box-plot Meses") {
+        } else if (input$ts_season == "Box-plot meses") {
           df3 <- rv_data()
           df3$mes_b<-factor(df3$mes_b,levels = monthorder)
           plot3<-plot_ly(df3, x = ~mes_b, y = ~interpolado_real_aht, type = "box", jitter = 0.3, color = ~mes_b,marker = list(color = '#000000'),
@@ -2013,5 +2013,565 @@ shinyServer(function(input, output,session) {
     
   })
   
+  # Ajuste de participación
+  
+  #Titulo grafica ajuste predicción mensual 
+  output$title_pred_plot_ajmes <- renderText({
+    paste("Real vs Predicción Mensual", "-", input$camp3, input$linea3, sep = " ")
+  })
+  
+  #Titulo tabla ajuste participacion
+  output$title_tabla_aj <- renderText({
+    paste("Ajuste de Predicción")
+  })
+  
+  #Titulo tabla de desviaciones 
+  output$title_tabladesv_aj <- renderText({
+    paste("Tabla de Desviaciones")
+  })
+  
+  #Titulo de tabla ajustada
+  output$title_resultado_aj <- renderText({
+    paste("Resumen Predicciones Ajustadas")
+  })
+  
+  #Creacion de lista vacía para participaciones
+  participacion_df <- reactiveVal(list())
+  
+  #Creacición dataframe con praticipaciones originales en 0
+  observeEvent(list(input$camp3,input$linea3,input$tag3), {
+    linea <- input$linea3
+    target <- input$tag3
+    negocio<-input$camp3
+    dfp <- filter(pred_diaria, target == target, negocio == negocio, linea == linea)
+    dfp$mes_abr<- format(dfp$fecha, "%b", locale = "es_ES")
+    dfp1<-dfp %>% select(año,mes_abr,mes,dia,dia_semana,prediccion,linea,negocio,target,fecha)
+    
+    participacion2 <- dfp1 %>% group_by(año, mes) %>% summarise(llamadas = sum(prediccion),fecha=min(fecha))
+    participacion2$part. <- 0.00
+    participacion2$mes_abr<- format(participacion2$fecha, "%b", locale = "es_ES")
+    participacion3 <- participacion2 %>% select(año, mes_abr, part.)
+    participacion_pivot<-participacion3 %>%
+      pivot_wider(names_from = mes_abr, values_from = part.)
+    orden_meses <- c("año","ene.", "feb.", "mar.", "abr.", "may.", "jun.", 
+                     "jul.", "ago.", "sep.", "oct.", "nov.", "dic.")
+    participacion_pivot <- participacion_pivot[, order(match(colnames(participacion_pivot), orden_meses))]
+    df <- participacion_df()
+    key <- paste0(negocio," - ", linea, " - ", target)
+    df[[key]] <- participacion_pivot
+    
+    participacion_df(df)
+    
+  })
+  
+  #datatable editable (editar la particiácion)
+  output$tabla <- renderDT({
+    linea <- input$linea3
+    target <- input$tag3
+    negocio <- input$camp3
+    key <- paste0(negocio," - ", linea, " - ", target)
+    if (!is.null(linea)&&!is.null(target)&&!is.null(negocio)) {
+      # Retrieve the edited values for the selected line, if available
+      edited_df <- isolate(valores_editados[[key]])
+      if (!is.null(edited_df)) {
+        # If edited values exist for the line, display them in the table
+        df <- edited_df
+      } else {
+        # Otherwise, display the original data for the line
+        df <- participacion_df()[[key]]
+      }
+      
+      datatable(
+        df,
+        editable = TRUE,
+        options = list(
+          paging = FALSE,
+          searching = FALSE,
+          rownames = FALSE,
+          columnDefs = list(list(className = 'dt-center', targets = -1.00:1.00))
+        ),
+        callback = JS(
+          "table.on('edit', function(e, datatable, cell, editValue) {",
+          "  var row = cell.index().row;",
+          "  var col = cell.index().column;",
+          "  Shiny.setInputValue('tabla_cell_edit', {",
+          "    row: row,",
+          "    col: col,",
+          "    value: editValue",
+          "  });",
+          "});"
+        )
+      )
+    }
+  })
+  
+  # Almacenar los valores editados para cada línea y target
+  valores_editados <- reactiveValues()
+  aplicar_a_todos <- reactiveVal(FALSE)
+  
+  # Actualizar la tabla en el UI con los valores editados
+  observeEvent(input$tabla_cell_edit, {
+    linea <- input$linea3
+    target <- input$tag3
+    negocio <- input$camp3
+    key <- paste0(negocio, " - ", linea, " - ", target)
+    info <- input$tabla_cell_edit
+    row <- info$row
+    col <- info$col
+    value <- info$value
+    if (!is.null(linea)) {
+      if (!is.null(valores_editados[[key]])) {
+        valores_editados[[key]][row, col] <- value
+        # Aplicar cambios según la selección del botón
+        if (isTRUE(aplicar_a_todos())) {
+          if(row == 1){
+            for (i in col:ncol(valores_editados[[key]])) {
+              if(!is.na(valores_editados[[key]][row, i])){
+                valores_editados[[key]][row, i] <- value
+                valores_editados[[key]][row+1, 2:ncol(valores_editados[[key]])] <- value}
+              else{
+                valores_editados[[key]][row, i] <- NA}
+            }
+          }else{
+            for (i in col:ncol(valores_editados[[key]])) {
+              if(!is.na(valores_editados[[key]][row, i])){
+                valores_editados[[key]][row, i] <- value
+              }
+              else{
+                valores_editados[[key]][row, i] <- NA}
+            }
+          }
+        }
+      } else {
+        df <- participacion_df()[[key]]
+        df[row, col] <- value
+        valores_editados[[key]] <- df
+        # Aplicar cambios según la selección del botón
+        if (isTRUE(aplicar_a_todos())) {
+          if(row == 1){
+            for (i in col:ncol(valores_editados[[key]])) {
+              if(!is.na(valores_editados[[key]][row, i])){
+                valores_editados[[key]][row, i] <- value
+                valores_editados[[key]][row+1, 2:ncol(valores_editados[[key]])] <- value}
+              else{
+                valores_editados[[key]][row, i] <- NA}
+            }
+          }else{
+            for (i in col:ncol(valores_editados[[key]])) {
+              if(!is.na(valores_editados[[key]][row, i])){
+                valores_editados[[key]][row, i] <- value
+              }
+              else{
+                valores_editados[[key]][row, i] <- NA}
+            }
+          }
+        }
+      }
+      
+      replaceData(proxy = dataTableProxy('tabla'), valores_editados[[key]], resetPaging = FALSE)
+    }
+  })
+  
+  # Agregar un botón de selección para aplicar a todas las celdas en adelante
+  observe({
+    if (!is.null(input$aplicar_a_todos)) {
+      aplicar_a_todos(input$aplicar_a_todos)
+    }
+  })
+  
+  valores_editados_a_dataframe <- function() {
+    # Combina todos los valores editados en un solo dataframe
+    edited_values <- do.call(rbind, lapply(names(valores_editados), function(key) {
+      df <- valores_editados[[key]]
+      df$key <- key
+      return(df)
+    }))
+    return(edited_values)
+  }
+  
+  #Dataframe de participación con participaciones editadas
+  participacion_df_t<-reactive({
+    linea <- input$linea3
+    target <- input$tag3
+    negocio <- input$camp3
+    key <- paste0(negocio," - ", linea, " - ", target)
+    if (!is.null(valores_editados[[key]])) {
+      edited_df <- isolate(valores_editados[[key]])
+      df <- edited_df
+    } else {
+      df <- participacion_df()[[key]]
+    }
+    df_original <- df %>%
+      pivot_longer(cols = -año, names_to = "mes_abr", values_to = "part.")
+    df_original1<-  na.omit(df_original)
+    
+    return(df_original1)
+    
+  })
+  #BOTON DE AJUSTAR TODO
+  
+  
+  
+  # Creación de lista vacía para participaciones
+  participacion_df_1 <- reactiveVal(list())
+  
+  # Valores iniciales para valores_ajustados
+  valores_ajustados <- reactiveVal(
+    setNames(
+      replicate(length(unique(paste(pred_diaria$negocio, pred_diaria$linea, pred_diaria$target))), list(part_t = 0.0), simplify = FALSE),
+      unique(paste0(pred_diaria$negocio, " - ", pred_diaria$linea, " - ", pred_diaria$target))
+    )
+  )
+  
+  # Creación de dataframe con participaciones originales en 0
+  observeEvent(list(input$camp3, input$linea3, input$tag3), {
+    linea <- input$linea3
+    target <- input$tag3
+    negocio <- input$camp3
+    key <-paste0(negocio, " - ", linea, " - ", target)
+    valor_guardado <- valores_ajustados()[[key]]
+    dfp <- filter(pred_diaria, target == target, negocio == negocio, linea == linea)
+    dfp$mes_abr <- format(dfp$fecha, "%b", locale = "es_ES")
+    dfp1 <- dfp %>% select(año, mes_abr, mes, dia, dia_semana, prediccion, linea, negocio, target, fecha)
+    
+    participacion2 <- dfp1 %>% group_by(año, mes) %>% summarise(llamadas = sum(prediccion), fecha = min(fecha))
+    participacion2$part_tot <- 0.00
+    participacion2$mes_abr <- format(participacion2$fecha, "%b", locale = "es_ES")
+    participacion3 <- participacion2 %>% select(año, mes_abr, part_tot)
+    
+    df <- participacion_df_1()
+    key <- paste0(negocio, " - ", linea, " - ", target)
+    df[[key]] <- participacion3
+    
+    participacion_df_1(df)
+    
+    # Actualizar los valores de los NumericInputs
+    updateNumericInput(session, "part_t", value = valor_guardado$part_t)
+    
+  })
+  
+  # Editar la participación
+  observeEvent(input$part_t, {
+    linea <- input$linea3
+    target <- input$tag3
+    negocio <- input$camp3
+    key <- paste0(negocio, " - ", linea, " - ", target)
+    
+    # Obtiene el valor del numericInput
+    new_value <- input$part_t
+    
+    if (!is.null(linea) && !is.null(target) && !is.null(negocio)) {
+      vals <- valores_ajustados()
+      
+      if (!is.null(vals[[key]])) {
+        # Actualiza el valor guardado en valores_ajustados
+        vals[[key]]$part_t <- new_value
+        
+        # Actualiza valores_ajustados
+        valores_ajustados(vals)
+        
+        # Actualiza el dataframe participacion_df_1 con el nuevo valor
+        df <- participacion_df_1()
+        df[[key]]$part_tot <- new_value
+        participacion_df_1(df)
+      }
+    }
+  })
+  
+  # Dataframe de participación con participaciones editadas
+  participacion_df_t_1 <- reactive({
+    linea <- input$linea3
+    target <- input$tag3
+    negocio <- input$camp3
+    key <- paste0(negocio, " - ", linea, " - ", target)
+    
+    if (!is.null(participacion_df_1()[[key]])) {
+      df_original <- participacion_df_1()[[key]]
+      df_original1 <- na.omit(df_original)
+      return(df_original1)
+    } else {
+      # Puedes manejar el caso cuando no hay valores aquí
+      return(NULL)
+    }
+  })
+  
+  df_ajustes<-reactive({
+    df<-merge(participacion_df_t_1(), participacion_df_t(), by = c("año","mes_abr"))
+    
+  })
+  
+  #Calculo predicciones con las participaciones editadas (predicciones ajustadas)
+  df_p2<-reactive({
+    
+    linea <- input$linea3
+    
+    if (!is.null(linea)) {
+      
+      dfp <- filter(pred_diaria, target == input$tag3, negocio == input$camp3, linea == linea)
+      dfp$mes_abr<- format(dfp$fecha, "%b", locale = "es_ES")
+      dfp1<-dfp %>% select(año,mes_abr,mes,dia,dia_semana,prediccion,linea,negocio,target,fecha)
+      
+      df_ajus<-merge(dfp1,df_ajustes(), by.x = c(1, 2), by.y = c(1, 2))
+      df_ajus$fecha <- paste(df_ajus$año, df_ajus$mes, df_ajus$dia, sep="-") %>% ymd() %>% as.Date()
+      df_ajus$Ajuste_t_pred<-ifelse(df_ajus$prediccion==0,0,round((df_ajus$part_tot*(df_ajus$prediccion-1))+df_ajus$prediccion,0))
+      df_ajus$ajuste_prediccion<-ifelse(df_ajus$Ajuste_t_pred==0,0,round((df_ajus$part.*(df_ajus$Ajuste_t_pred-1))+df_ajus$Ajuste_t_pred,0))
+      
+      return(df_ajus)
+    }
+  })
+  #DF completo de predicciones ajustadas de tráfico
+  df_concat_calls<- reactive({
+    
+    df_ajus1<-df_p2() %>%
+      select(fecha, linea, negocio, ajuste_prediccion, año, mes, dia)
+    
+    dfr<-filter(data,negocio==input$camp3,linea==input$linea3) %>%
+      select(fecha, linea, negocio, real_calls, año, mes, dia)
+    names(dfr)[which(names(dfr) == "real_calls")] <- "ajuste_prediccion"
+    
+    
+    df_real_frc<- rbind(dfr, df_ajus1)
+    df_real_frc$combinado <- paste(df_real_frc$año, df_real_frc$mes, df_real_frc$dia, df_real_frc$negocio, df_real_frc$linea, sep = "-")
+    
+    df_real_frc <- subset(df_real_frc, !duplicated(combinado, fromLast = TRUE))
+    df_limp_pred1 <- df_real_frc[complete.cases(df_real_frc), ]
+    df_limp_pred1=df_limp_pred1[-8]
+    df_limp_pred1$mes_abr <- format(df_limp_pred1$fecha, "%b", locale = "es_ES")
+    df_limp_pred1$mes_b = format(df_limp_pred1$fecha,"%B")
+    
+    return(df_limp_pred1)
+    
+  })
+  
+  #DF completo de predicciones ajustadas de AHT
+  df_concat<-reactive({
+    
+    df_ajus1<-df_p2()%>%
+      select(fecha, linea, negocio, ajuste_prediccion, año, mes, dia)
+    
+    dfr<-filter(data,negocio==input$camp3,linea==input$linea3) %>%
+      select(fecha, linea, negocio, real_aht, año, mes, dia)
+    names(dfr)[which(names(dfr) == "real_aht")] <- "ajuste_prediccion"
+    
+    df_real_frc<- rbind(dfr, df_ajus1)
+    
+    df_real_frc$combinado <- paste(df_real_frc$año, df_real_frc$mes, df_real_frc$dia, df_real_frc$negocio, df_real_frc$linea, sep = "-")
+    df_real_frc <- subset(df_real_frc, !duplicated(combinado, fromLast = TRUE))
+    df_limp_pred1 <- df_real_frc[complete.cases(df_real_frc), ]
+    df_limp_pred1=df_limp_pred1[-8]
+    
+    dfrcalls<-filter(data,negocio==input$camp3,linea==input$linea3) %>%
+      select(linea, negocio, real_calls, año, mes, dia)
+    dfpcalls<-filter(pred_diaria, target=="Trafico",negocio==input$camp3,linea==input$linea3)%>%
+      select(linea, negocio, prediccion, año, mes, dia)
+    names(dfpcalls)[which(names(dfpcalls) == "prediccion")] <- "real_calls"
+    
+    df_real_clls<- rbind(dfrcalls, dfpcalls)
+    df_real_clls$combinado <- paste(df_real_clls$año, df_real_clls$mes, df_real_clls$dia, df_real_clls$negocio, df_real_clls$linea, sep = "-")
+    df_real_clls1 <- subset(df_real_clls, !duplicated(combinado, fromLast = TRUE))
+    df_real_clls2 <- df_real_clls1[complete.cases(df_real_clls1), ]
+    
+    df_real_clls2=df_real_clls2[-7]
+    df_limp_predaht<-merge(df_limp_pred1,df_real_clls2,by =c("linea","negocio","año","mes","dia"))
+    df_limp_predaht$mes_abr <- format(df_limp_predaht$fecha, "%b", locale = "es_ES")
+    df_limp_predaht$mes_b = format(df_limp_predaht$fecha,"%B")
+    return(df_limp_predaht)
+    
+  })
+  
+  #DF mensual completo de predicciones ajustadas
+  df_mes_ajuste <- reactive({
+    
+    if(input$tag3 == "Trafico"){
+      
+      df<- df_concat_calls() %>%
+        group_by(año,mes,mes_b) %>%
+        summarise(ajuste_prediccion=sum(ajuste_prediccion)) %>%
+        ungroup()
+      df$año<-as.factor(df$año)
+      
+      return(df)
+      
+    }else if(input$tag3 == "AHT"){
+      df<-df_concat() %>%
+        group_by(año,mes,mes_b) %>%
+        summarise(aht_calls=sum(ajuste_prediccion*real_calls),calls=sum(real_calls)) %>%
+        mutate(ajuste_prediccion=(aht_calls/calls)) %>%
+        ungroup()
+      df$año<-as.factor(df$año)
+      
+      return(df)
+    }
+  })
+  
+  #Grafica comparación mensual de historico con prediccion ajustada
+  output$plot<- renderPlotly({
+    
+    monthorder<-c("enero","febrero","marzo", "abril","mayo", "junio","julio",
+                  "agosto", "septiembre","octubre","noviembre","diciembre")
+    df<-df_mes_ajuste()[order(match(df_mes_ajuste()$mes,monthorder)),]
+    plot_ly(df, x = ~mes, y = ~ajuste_prediccion, color = ~factor(año), colors = c('#DA261E','#D1B2D1','#09B56B', '#5D0664', '#05ABAB', '#81CBF5'), type = 'scatter', mode = 'lines')  %>%
+      layout(
+        xaxis = list(title = "fecha",categoryorder = "array",
+                     categoryarray =monthorder),
+        yaxis = list(title = tipo_dato()))
+    
+  })
+  
+  #calculo desviaciones con predicción ajustada
+  df_mes_desv <- reactive({
+    
+    if(input$tag3 == "Trafico"){
+      
+      df<- df_concat_calls() %>%
+        group_by(año,mes,mes_abr) %>%
+        summarise(ajuste_prediccion=sum(ajuste_prediccion)) %>%
+        ungroup()
+      df$desv <- c(NA, round((df$ajuste_prediccion[-1] / df$ajuste_prediccion[-length(df$ajuste_prediccion)]-1)*100,2))
+      df1<-df %>% select(año, mes_abr, desv)
+      return(df1)
+      
+    }else if(input$tag3 == "AHT"){
+      df<-df_concat() %>%
+        group_by(año,mes,mes_abr) %>%
+        summarise(aht_calls=sum(ajuste_prediccion*real_calls),calls=sum(real_calls)) %>%
+        mutate(ajuste_prediccion=(aht_calls/calls)) %>%
+        ungroup()
+      df$desv <- c(NA, round((df$ajuste_prediccion[-1] / df$ajuste_prediccion[-length(df$ajuste_prediccion)]-1)*100,2))
+      df1<-df %>% select(año, mes_abr, desv)
+      return(df1)
+    }
+  })
+  #Tabla de desviaciones con predicción ajustada
+  df_desv_ajust<-reactive({
+    
+    df_pre <- df_mes_desv() %>%
+      pivot_wider(names_from = mes_abr, values_from = desv)
+    df_pre <- arrange(df_pre, año)
+    df_pre1<- select(df_pre, año, ene., feb., mar., abr., may., jun.,
+                     jul., ago., sep., oct., nov., dic.)
+    return(df_pre1)
+    
+  })
+  #Configuración tabla de desviaciones con predicción ajustada
+  output$Ajuste_pre_tabladesv <- renderDT({
+    datos=df_desv_ajust()
+    datatable(
+      datos,
+      options = list(
+        columnDefs = list(
+          list(
+            targets = 1:ncol(datos),  # Columnas afectadas (todas en este caso)
+            render = JS(
+              "function(data, type, row, meta) {",
+              "  if (parseFloat(data) > 10.0 || parseFloat(data)< -10.0) {",
+              "    return '<span style=\"color: red;\">' + data + '</span>';",
+              "  } else {",
+              "    return data;",
+              "  }",
+              "}"
+            )
+          )
+        )
+      )
+    )
+    
+  })
+  # Organización df predicciones diarias ajustadas
+  df_pre_ajus<-reactive({
+    df<- df_p2() %>% arrange(fecha) %>% 
+      select(año,mes,dia,dia_semana,ajuste_prediccion,linea,negocio,target,fecha)
+    return(df)
+  })
+  
+  # Organización df predicciones trafico mensuales ajustadas
+  df_pre_ajus_mes_inter <-reactive({
+    
+    df_limp_pre<- df_pre_ajus() %>%
+      group_by(año, mes, negocio, linea, target) %>% summarise(ajuste_prediccion=sum(ajuste_prediccion),
+                                                               fecha=min(fecha)) %>%
+      ungroup()
+    
+  })
+  
+  # Organización df predicciones aht mensuales ajustadas
+  df_pre_ajus_mes_aht<-reactive({
+    
+    df_ajus1<-df_p2()%>%
+      select(fecha, linea, negocio, ajuste_prediccion, año, mes, dia, target)
+    
+    dfpcalls<-filter(Pred_dr, target=="Trafico",negocio==input$camp3,linea==input$linea3)%>%
+      select(linea, negocio, prediccion, año, mes, dia)
+    names(dfpcalls)[which(names(dfpcalls) == "prediccion")] <- "real_calls"
+    
+    df_limp_predaht<-merge(df_ajus1,dfpcalls,by =c("linea","negocio","año","mes","dia"))
+    
+    df_limp_predaht_m<- df_limp_predaht %>%
+      group_by(año, mes, negocio, linea, target) %>% summarise(interacciones=sum(real_calls),
+                                                               inter_aht=sum(ajuste_prediccion*real_calls),
+                                                               fecha=min(fecha)) %>%
+      mutate(ajuste_prediccion=inter_aht/interacciones) %>%
+      ungroup() %>%
+      select(año, mes, negocio, linea, target, ajuste_prediccion, fecha)
+    
+    
+    return(df_limp_predaht_m)
+    
+  })
+  # df predicciones mensuales ajustadas por rango
+  pre_ajus_mes <- reactive({
+    if(input$tag3 == "Trafico"){
+      
+      df_pre_ajus_mes_inter()
+      
+    }else if(input$tag3 == "AHT"){
+      
+      df_pre_ajus_mes_aht()
+      
+    }
+  })
+  # df predicciones diarias ajustadas por rango
+  pred_aju_dia1 <- reactive({
+    if (input$amount3 == 'Todos'){
+      df_pre_ajus()
+      
+    } else if (input$amount3 == 'Rango'){
+      df_pre_ajus() %>%
+        subset(fecha >= input$range3[1] & fecha <= input$range3[2])
+    }
+  })
+  #Botón de prediccion ajustada mensual/diaria
+  estado1 <- reactiveVal(TRUE)
+  observeEvent(input$btn_diario1, {
+    # Cambiar el estado del botón al contrario del estado actual
+    estado1(!estado1())
+  })
+  
+  #Cambiar predicción ajustada a mensual/diaria según botón 
+  pred_aju <- reactive({
+    if(estado1()) {
+      predi <-pre_ajus_mes()
+      predi %>% mutate(mes = format(predi$fecha, "%B", locale = "es_ES"))%>%
+        select(año, mes, negocio, linea, target, ajuste_prediccion)
+    } else {
+      predi<-pred_aju_dia1()
+      predi<-predi[-4]
+      predi%>% select(fecha,negocio, linea, target, ajuste_prediccion)
+    }
+  })
+  #Botón para descargar la predicción ajustada
+  output$exportButton1 <- downloadHandler(
+    filename = function() {
+      "predicciones_ajustadas.xlsx"
+    },
+    content = function(file) {
+      write.xlsx(pred_aju(), file)
+    }
+  )
+  # Imprimir el valor editado si está disponible, de lo contrario, mostrar el valor original
+  output$resultado <- renderDataTable({
+    pred_aju()
+    
+  })
   
 })
