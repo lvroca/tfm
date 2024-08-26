@@ -155,7 +155,7 @@ shinyUI(fluidPage(
           condition = 'input.tabs == "Serie" || input.tabs == "Descomposición" ',
         column(
           width = 2,
-          pickerInput("per", "Seleccione periodicidad", c("Diaria" = "diaria", "Semanal" = "semanal", "Mensual" = "mensual"))
+          pickerInput("per", "Seleccione periodicidad", c("Diaria" = "diaria","Mensual" = "mensual"))
           )
         ),
         conditionalPanel(
@@ -246,7 +246,7 @@ shinyUI(fluidPage(
         ),
         column(
           width = 2,
-          pickerInput("per2", "Seleccione periodicidad", c("Diaria" = "diaria", "Semanal" = "semanal", "Mensual" = "mensual"))
+          pickerInput("per2", "Seleccione periodicidad", c("Diaria" = "diaria", "Mensual" = "mensual"))
         )
       ),
       fluidRow(
@@ -283,13 +283,6 @@ shinyUI(fluidPage(
       "Pronóstico M. y L.P",
       fluidRow(
         style = "background-color: white;",
-        conditionalPanel(
-          condition = 'input.tabs1 == "Ajuste de predicción"',
-          column(
-            width = 1,
-            style = "height:13vh; display: flex; align-items: center; justify-content: center;",
-            actionButton("WFM", "Vista WFM")
-          )),
         column(
           width = 2,
           pickerInput("camp3", "Seleccione campaña", choices = sort(unique(data$negocio)))
@@ -306,7 +299,7 @@ shinyUI(fluidPage(
           condition = 'input.tabs1 == "Predicción"',
           column(
             width = 2,
-            pickerInput("per3", "Seleccione periodicidad", c("Diaria" = "diaria", "Semanal" = "semanal", "Mensual" = "mensual"))
+            pickerInput("per3", "Seleccione periodicidad", c("Diaria" = "diaria", "Mensual" = "mensual"))
           )
         ),
         conditionalPanel(
@@ -394,7 +387,7 @@ shinyUI(fluidPage(
                                                     font-family: "Calibri";font-weight: bold;}')),
             actionButton("btn_diario1", "Cambiar a vista diaria"),
             downloadButton("exportButton1", "Exportar"),
-            dataTableOutput(outputId = "resultado", width= "100%")
+            DTOutput(outputId = "resultado", width= "100%")
           )
         )
       )
