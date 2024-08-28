@@ -26,75 +26,81 @@ library(stringr)
 require(reshape)
 library(stats)
 
+#Importanción datos histórico
+reporte_diario_campaña <- read_excel("reporte_diario_campaña_limpio.xlsx")[ , -1]
+
+#Configuración y modificaciones a datos historica 
+data = arrange(bind_rows(reporte_diario_campaña), fecha)
+data$fecha<-as.Date(data$fecha)
+data = cbind(data, fecha_inicio = as.Date(cut(data$fecha, "week")))
+
+data$fecha = as.Date(data$fecha, format="%Y-%m-%d")
+data$mes_b = format(data$fecha,"%B")
+data$out_real_calls<-as.factor(data$out_real_calls)
+levels(data$out_real_calls) <- c("no", "si")
+data$out_real_aht<-as.factor(data$out_real_aht)
+levels(data$out_real_aht) <- c("no", "si")
+data$linea<- chartr("áéíóúÁÉÍÓÚ", "aeiouAEIOU", data$linea)
+data$negocio<- chartr("áéíóúÁÉÍÓÚ", "aeiouAEIOU", data$negocio)
+data$id <- paste(data$negocio, data$linea, sep = "-")
+
+# Importación datos validación
+validacion_diaria_calls <- read_excel("validacion_diaria_calls.xlsx")
+validacion_diaria_calls = dplyr::rename(validacion_diaria_calls, real = interpolado_real_calls)
+validacion_diaria_calls$target <- "Trafico"
+validacion_diaria_aht <- read_excel("validacion_diaria_aht.xlsx")
+validacion_diaria_aht = dplyr::rename(validacion_diaria_aht, real =interpolado_real_aht)
+validacion_diaria_aht$target <- "AHT"
+
+# Configuración y modificaciones a datos validación
+validacion_diaria <- rbind(validacion_diaria_calls, validacion_diaria_aht)
+validacion_diaria$negocio <- "campaña_1"
+validacion_diaria$target<-as.factor(validacion_diaria$target)
+validacion_diaria$pred_ts <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_ts, 0),
+                                    ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_ts, 2), validacion_diaria$pred_ts))
+
+validacion_diaria$real <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$real, 0),
+                                 ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$real, 2), validacion_diaria$real))
+validacion_diaria$pred_regr <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_regr, 0),
+                                      ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_regr, 2), validacion_diaria$pred_regr))
+validacion_diaria$pred_promedio <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_promedio, 0),
+                                          ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_promedio, 2), validacion_diaria$pred_promedio))
+validacion_diaria$pred_fb <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_fb, 0),
+                                    ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_fb, 2), validacion_diaria$pred_fb))
+validacion_diaria$pred_gru <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_gru, 0),
+                                     ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_gru, 2), validacion_diaria$pred_gru))
+
+
+# Importacion validacion wfm
+validacion_diaria_wfm <- read_excel("validacion_diaria_wfm.xlsx")
+
+#Importación datos predicción
+pred_diaria_calls <- read_excel("prediccion_calls.xlsx")[,-1]
+pred_diaria_calls$target <- "Trafico"
+pred_diaria_aht <- read_excel("prediccion_aht.xlsx")[,-1]
+pred_diaria_aht$target <- "AHT"
+pred_diaria_aht <- pred_diaria_aht %>% select(-interpolado_real_calls)
+
+# Configuración y modificaciones a datos prediccion
+pred_diaria <- rbind(pred_diaria_calls, pred_diaria_aht)
+pred_diaria$negocio <- "campaña_1"
+
+pred_diaria$combinado <- paste(pred_diaria$año, pred_diaria$mes, pred_diaria$dia, pred_diaria$negocio, pred_diaria$linea,pred_diaria$target, sep = "-")
+pred_diaria <- subset(pred_diaria, !duplicated(combinado, fromLast = TRUE))
+pred_diaria$fecha <- paste(pred_diaria$año, pred_diaria$mes, pred_diaria$dia, sep="-") %>% ymd() %>% as.Date()
+pred_diaria$combinado <- paste(pred_diaria$fecha, pred_diaria$target, pred_diaria$negocio, pred_diaria$linea, sep = "-")
+pred_diaria <- subset(pred_diaria, !duplicated(combinado, fromLast = TRUE))
+pred_diaria$prediccion <- ifelse(pred_diaria$target == "Trafico", round(pred_diaria$prediccion, 0),
+                                 ifelse(pred_diaria$target == "AHT", round(pred_diaria$prediccion, 2), pred_diaria$prediccion))
+
+pred_diaria$id <- paste(pred_diaria$negocio, pred_diaria$linea, sep = " - ")
+pred_diaria$mes_abr<- format(pred_diaria$fecha, "%b", locale = "es_ES")
+pred_diaria <- subset(pred_diaria, select = -combinado)
+######
+
 #Server shiny app, codigo de todas los outputs
 shinyServer(function(input, output,session) {
-  #Importanción datos histórico
-  reporte_diario_campaña <- read_excel("reporte_diario_campaña_limpio.xlsx")[ , -1]
-  
-  #Configuración y modificaciones a datos historica 
-  data = arrange(bind_rows(reporte_diario_campaña), fecha)
-  data$fecha<-as.Date(data$fecha)
-  data = cbind(data, fecha_inicio = as.Date(cut(data$fecha, "week")))
-  
-  data$fecha = as.Date(data$fecha, format="%Y-%m-%d")
-  data$mes_b = format(data$fecha,"%B")
-  data$out_real_calls<-as.factor(data$out_real_calls)
-  levels(data$out_real_calls) <- c("no", "si")
-  data$out_real_aht<-as.factor(data$out_real_aht)
-  levels(data$out_real_aht) <- c("no", "si")
-  data$linea<- chartr("áéíóúÁÉÍÓÚ", "aeiouAEIOU", data$linea)
-  data$negocio<- chartr("áéíóúÁÉÍÓÚ", "aeiouAEIOU", data$negocio)
-  data$id <- paste(data$negocio, data$linea, sep = "-")
-  
-  # Importación datos validación
-  validacion_diaria_calls <- read_excel("validacion_diaria_calls.xlsx")
-  validacion_diaria_calls = dplyr::rename(validacion_diaria_calls, real = interpolado_real_calls)
-  validacion_diaria_calls$target <- "Trafico"
-  validacion_diaria_aht <- read_excel("validacion_diaria_aht.xlsx")
-  validacion_diaria_aht = dplyr::rename(validacion_diaria_aht, real =interpolado_real_aht)
-  validacion_diaria_aht$target <- "AHT"
-  
-  # Configuración y modificaciones a datos validación
-  validacion_diaria <- rbind(validacion_diaria_calls, validacion_diaria_aht)
-  validacion_diaria$negocio <- "campaña_1"
-  validacion_diaria$target<-as.factor(validacion_diaria$target)
-  validacion_diaria$pred_ts <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_ts, 0),
-                                      ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_ts, 2), validacion_diaria$pred_ts))
-  
-  validacion_diaria$real <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$real, 0),
-                                   ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$real, 2), validacion_diaria$real))
-  validacion_diaria$pred_regr <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_regr, 0),
-                                        ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_regr, 2), validacion_diaria$pred_regr))
-  validacion_diaria$pred_promedio <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_promedio, 0),
-                                            ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_promedio, 2), validacion_diaria$pred_promedio))
-  validacion_diaria$pred_fb <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_fb, 0),
-                                      ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_fb, 2), validacion_diaria$pred_fb))
-  validacion_diaria$pred_gru <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_gru, 0),
-                                                ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_gru, 2), validacion_diaria$pred_gru))
-  
-  #Importación datos predicción
-  pred_diaria_calls <- read_excel("prediccion_calls.xlsx")[,-1]
-  pred_diaria_calls$target <- "Trafico"
-  pred_diaria_aht <- read_excel("prediccion_aht.xlsx")[,-1]
-  pred_diaria_aht$target <- "AHT"
-  pred_diaria_aht <- pred_diaria_aht %>% select(-interpolado_real_calls)
-  
-  # Configuración y modificaciones a datos prediccion
-  pred_diaria <- rbind(pred_diaria_calls, pred_diaria_aht)
-  pred_diaria$negocio <- "campaña_1"
-
-  pred_diaria$combinado <- paste(pred_diaria$año, pred_diaria$mes, pred_diaria$dia, pred_diaria$negocio, pred_diaria$linea,pred_diaria$target, sep = "-")
-  pred_diaria <- subset(pred_diaria, !duplicated(combinado, fromLast = TRUE))
-  pred_diaria$fecha <- paste(pred_diaria$año, pred_diaria$mes, pred_diaria$dia, sep="-") %>% ymd() %>% as.Date()
-  pred_diaria$combinado <- paste(pred_diaria$fecha, pred_diaria$target, pred_diaria$negocio, pred_diaria$linea, sep = "-")
-  pred_diaria <- subset(pred_diaria, !duplicated(combinado, fromLast = TRUE))
-  pred_diaria$prediccion <- ifelse(pred_diaria$target == "Trafico", round(pred_diaria$prediccion, 0),
-                                   ifelse(pred_diaria$target == "AHT", round(pred_diaria$prediccion, 2), pred_diaria$prediccion))
-  
-  pred_diaria$id <- paste(pred_diaria$negocio, pred_diaria$linea, sep = " - ")
-  pred_diaria$mes_abr<- format(pred_diaria$fecha, "%b", locale = "es_ES")
-  pred_diaria <- subset(pred_diaria, select = -combinado)
-  #####################################################
+  ###############################################
   
   #########################################################################
   
@@ -243,8 +249,7 @@ shinyServer(function(input, output,session) {
                      call_aht_off=sum(interpolado_real_calls*interpolado_real_aht),
                      interacciones_real=sum(real_calls),
                      interacciones_off=sum(interpolado_real_calls)
-                     #real_aht = mean(real_aht),
-                     #interpolado_real_aht = mean(interpolado_real_aht)
+
           ) %>%
           mutate(real_aht=(call_aht_real/interacciones_real),
                  interpolado_real_aht=(call_aht_off/interacciones_off)) %>%
@@ -593,15 +598,15 @@ shinyServer(function(input, output,session) {
           group_by(año, mes_b) %>%
           summarise(interpolado_real_calls = sum(interpolado_real_calls))
         df$año<-as.factor(df$año)
-        df$mes_b = factor(df$mes_b, labels = monthorder)
+        df$mes_b = factor(df$mes_b, labels  = c("abril","agosto","diciembre","febrero","enero","julio",   
+                                               "junio", "marzo","mayo","noviembre","octubre","septiembre"))
+        df$mes_b = factor(df$mes_b, levels = monthorder)
         df<-df[order(match(df$mes_b,monthorder)),]
-        
         plot1 <- plot_ly(df, x = ~mes_b, y = ~interpolado_real_calls, color = ~factor(año), 
                          colors = c('#DA261E','#D1B2D1','#09B56B', '#5D0664', '#05ABAB'), 
                          type = 'scatter', mode = 'lines') %>%
          layout(
-            xaxis = list(title = "fecha",categoryorder = "array",
-                         categoryarray =monthorder),
+            xaxis = list(title = "mes"),
             yaxis = list(title = tipo_dato()))
         
         plot1%>% layout(legend=list(title=list(text="año")))
@@ -611,35 +616,45 @@ shinyServer(function(input, output,session) {
           group_by(mes_b, año) %>%
           summarise(interpolado_real_calls = sum(interpolado_real_calls))
         df2$año <- factor(df2$año)
-        df2$mes_b<-factor(df2$mes_b,labels = monthorder)
+        df2$mes_b = factor(df2$mes_b, labels = c("abril","agosto","diciembre","febrero","enero","julio",   
+                                               "junio", "marzo","mayo","noviembre","octubre","septiembre"))
+        
+        df2$mes_b = factor(df2$mes_b, levels = monthorder)
+        df2<-df2[order(match(df2$mes_b,monthorder)),]
         plot2 <- plot_ly(df2, x = ~año, y = ~interpolado_real_calls, color = ~mes_b, colors = c('#142066','#5D0664','#05ABAB'), type = 'bar') %>%
           layout(
             xaxis = list(title = "fecha"),
             yaxis = list(title = tipo_dato()),
             barmode = 'group')
-        plot2 %>% layout(legend=list(title=list(text="mes_b")))
+        plot2 %>% layout(legend=list(title=list(text="mes")))
         
       } else if (input$ts_season == "Box-plot Meses") {
         df3 <- rv_data()
-        df3$mes_b<-factor(df3$mes_b,labels = monthorder)
+        df3$mes_b = factor(df3$mes_b, labels = c("abril","agosto","diciembre","febrero","enero","julio",   
+                                                 "junio", "marzo","mayo","noviembre","octubre","septiembre"))
+        df3$mes_b = factor(df3$mes_b, levels  = c("abril","agosto","diciembre","enero","febrero","julio",   
+                                                "junio", "marzo","mayo","noviembre","octubre","septiembre"))
+        df3$mes_b = factor(df3$mes_b, levels = monthorder)
+        df3<-df3[order(match(df3$mes_b,monthorder)),]
         plot3<-plot_ly(df3, x = ~mes_b, y = ~interpolado_real_calls, type = "box", jitter = 0.3, color = ~mes_b,marker = list(color = '#000000'),
                        colors = c('#142066','#5D0664','#05ABAB')) %>%
           layout(
-            xaxis = list(title = "mes_b"),
+            xaxis = list(title = "mes"),
             yaxis = list(title = tipo_dato())
           )
-        plot3%>% layout(legend=list(title=list(text="mes_b")))
+        plot3%>% layout(legend=list(title=list(text="mes")))
       }}else if(input$tag == "AHT"){
         if (input$ts_season == "Por año") {
           df <- rv_data() %>%
             group_by(año, mes_b)  %>%
             summarise(
-              #interpolado_real_aht = mean(interpolado_real_aht)
               call_aht_off=sum(interpolado_real_calls*interpolado_real_aht),
               interacciones_off=sum(interpolado_real_calls)) %>%
             mutate(interpolado_real_aht=(call_aht_off/interacciones_off))
           df$año<-as.factor(df$año)
-          df$mes_b = actor(df$mes_b, labels = monthorder)
+          df$mes_b = factor(df$mes_b, labels  = c("abril","agosto","diciembre","febrero","enero","julio",   
+                                                  "junio", "marzo","mayo","noviembre","octubre","septiembre"))
+          df$mes_b = factor(df$mes_b, levels = monthorder)
           df<-df[order(match(df$mes_b,monthorder)),]
           plot1 <- plot_ly(df, x = ~mes_b, y = ~interpolado_real_aht, color = ~factor(año), colors = c('#DA261E','#D1B2D1','#09B56B', '#5D0664', '#05ABAB'), type = 'scatter', mode = 'lines') %>%
             layout(
@@ -654,11 +669,13 @@ shinyServer(function(input, output,session) {
           df2 <- rv_data() %>%
             group_by(mes_b, año)  %>%
             summarise(
-              #interpolado_real_aht = mean(interpolado_real_aht)
               call_aht_off=sum(interpolado_real_calls*interpolado_real_aht),
               interacciones_off=sum(interpolado_real_calls)) %>%
             mutate(interpolado_real_aht=(call_aht_off/interacciones_off))
-          df2$mes_b<-factor(df2$mes_b,labels = monthorder)
+          df2$mes_b = factor(df2$mes_b, labels  = c("abril","agosto","diciembre","febrero","enero","julio",   
+                                                  "junio", "marzo","mayo","noviembre","octubre","septiembre"))
+          df2$mes_b = factor(df2$mes_b, levels = monthorder)
+          df2<-df2[order(match(df2$mes_b,monthorder)),]
           plot2 <- plot_ly(df2, x = ~año, y = ~interpolado_real_aht, color = ~mes_b, colors = c('#142066','#5D0664','#05ABAB'), type = 'bar') %>%
             layout(
               xaxis = list(title = "fecha"),
@@ -667,20 +684,23 @@ shinyServer(function(input, output,session) {
           plot2%>% layout(legend=list(title=list(text="mes_b")))
         } else if (input$ts_season == "Box-plot Meses") {
           df3 <- rv_data()
-          df3$mes_b<-factor(df3$mes_b,labels = monthorder)
+          df3$mes_b = factor(df3$mes_b, labels  = c("abril","agosto","diciembre","febrero","enero","julio",   
+                                                   "junio", "marzo","mayo","noviembre","octubre","septiembre"))
+          df3$mes_b = factor(df3$mes_b, levels = monthorder)
+          df3<-df3[order(match(df3$mes_b,monthorder)),]
           plot3<-plot_ly(df3, x = ~mes_b, y = ~interpolado_real_aht, type = "box", jitter = 0.3, color = ~mes_b,marker = list(color = '#000000'),
                          colors = c('#142066','#5D0664','#05ABAB')) %>%
             layout(
-              xaxis = list(title = "mes_b"),
+              xaxis = list(title = "mes"),
               yaxis = list(title = tipo_dato()))
-          plot3%>% layout(legend=list(title=list(text="mes_b")))
+          plot3%>% layout(legend=list(title=list(text="mes")))
           
         }}
   })
   
   # Graficas analisis estacional por día de la semana
   output$boxweek_plot <- renderPlotly({
-    day_labels <- c("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo", "Festivo")
+    day_labels <- c("lunes", "martes", "miércoles", "jueves", "viernes", "sabado", "domingo", "festivo")
     monthorder<-c("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", 
                   "agosto", "septiembre", "octubre", "noviembre", "diciembre")
     
@@ -690,8 +710,8 @@ shinyServer(function(input, output,session) {
           group_by(dia_semana, año) %>%
           summarise(interpolado_real_calls = sum(interpolado_real_calls))
         
-        df$dia_semana <- factor(df$dia_semana, labels = day_labels)
-        
+        df$dia_semana <- factor(df$dia_semana,labels = day_labels)
+        df <- df[order(df$dia_semana), ]
         plot1 <- plot_ly(df, x = ~dia_semana, y = ~interpolado_real_calls, color = ~factor(año), 
                          colors = c('#DA261E','#D1B2D1','#09B56B', '#5D0664', '#05ABAB'), 
                          type = 'scatter', mode = "lines+markers") %>%
@@ -718,7 +738,10 @@ shinyServer(function(input, output,session) {
           group_by(mes_b, dia_semana) %>%
           summarise(interpolado_real_calls = sum(interpolado_real_calls))
         
-        df$mes_b<-factor(df$mes_b,labels = monthorder)
+        df$mes_b = factor(df$mes_b, labels  = c("abril","agosto","diciembre","febrero","enero","julio",   
+                                                  "junio", "marzo","mayo","noviembre","octubre","septiembre"))
+        df$mes_b = factor(df$mes_b, levels = monthorder)
+        df<-df[order(match(df$mes_b,monthorder)),]
         df$dia_semana <- factor(df$dia_semana, labels = day_labels)
         
         plot2 <- plot_ly(df, x = ~mes_b, y = ~interpolado_real_calls, color = ~dia_semana, colors = c('#142066','#5D0664','#05ABAB'), type = 'bar') %>%
@@ -755,7 +778,10 @@ shinyServer(function(input, output,session) {
             interacciones_off = sum(interpolado_real_calls)) %>%
           mutate(interpolado_real_aht = (call_aht_off / interacciones_off))
         
-        df$mes_b<-factor(df$mes_b,labels = monthorder)
+        df$mes_b = factor(df$mes_b, labels  = c("abril","agosto","diciembre","febrero","enero","julio",   
+                                                "junio", "marzo","mayo","noviembre","octubre","septiembre"))
+        df$mes_b = factor(df$mes_b, levels = monthorder)
+        df<-df[order(match(df$mes_b,monthorder)),]
         df$dia_semana <- factor(df$dia_semana, labels = day_labels)
         
         plot2 <- plot_ly(df, x = ~mes_b, y = ~interpolado_real_aht, color = ~dia_semana, colors = c('#142066','#5D0664','#05ABAB'), type = 'bar') %>%
@@ -848,6 +874,32 @@ shinyServer(function(input, output,session) {
     }
   })
   
+  # Creación validación mensual wfm
+  val_mes_wfm <-reactive({
+    if (input$tag2=="Trafico"){
+      validacion_diaria_wfm %>%
+        subset(target == "Trafico")   %>% 
+        mutate(año = format(fecha, "%Y"),mes = format(fecha, "%m")) %>% 
+        group_by(año,mes,linea,target) %>% summarise(real = sum(real),
+                                                             pred_wfm=sum(pred_wfm),
+                                                             pred_prophet=sum(pred_prophet),
+                                                             fecha = min(fecha),
+                                                             target = first(target))%>%
+        arrange(fecha)%>%
+        ungroup()
+    }else if (input$tag2=="AHT"){
+      validacion_diaria_wfm %>%
+        subset(target == "AHT")   %>% 
+        mutate(año = format(fecha, "%Y"),mes = format(fecha, "%m")) %>% 
+        group_by(año,mes,linea,target) %>% summarise(real = mean(real),
+                                                             pred_wfm=mean(pred_wfm),
+                                                             pred_prophet=mean(pred_prophet),
+                                                             fecha = min(fecha),
+                                                             target = first(target))%>%
+        ungroup()
+    }
+  })
+  
   
   #Dataframe validación mensual filtrado por camapaña,línea y target
   rv_val_mes <- reactive({
@@ -863,6 +915,22 @@ shinyServer(function(input, output,session) {
   rv_val_dia <- reactive({
     validacion_diaria %>%
       subset(negocio == input$camp2)%>%
+      subset(linea == input$linea2)%>%
+      subset(target == input$tag2) 
+  })
+  
+  #Dataframe validación mensual filtrado por camapaña,línea y target wfm
+  rv_val_mes_wfm <- reactive({
+    val_mes_wfm() %>%
+      subset(linea == input$linea2) %>%
+      subset(target == input$tag2) 
+    
+  })
+  
+  
+  #Dataframe validación diaria filtrado por camapaña,línea y target wfm
+  rv_val_dia_wfm <- reactive({
+    validacion_diaria_wfm %>%
       subset(linea == input$linea2)%>%
       subset(target == input$tag2) 
   })
@@ -892,10 +960,42 @@ shinyServer(function(input, output,session) {
         layout(legend=list(title=list(text='modelo')), xaxis = list(title = "fecha"), yaxis = list(title = tipo_dato2()))
     }
   })
+  
+  #Gráfico validación vs wfm
+  output$val_plot_wfm <- renderPlotly({
+    Sys.setlocale("LC_TIME", "es_ES.utf8")
+    if (input$per2 == "diaria"){
+      df <- rv_val_dia_wfm() %>%
+        pivot_longer(cols = c(real, pred_wfm,pred_prophet), names_to = "modelo", values_to = "Valor")
+      df$modelo<-as.factor(df$modelo)
+      df$modelo <- factor(df$modelo, levels = c("real","pred_wfm","pred_prophet"))
+      levels(df$modelo) <- c("Real","WFM","Prophet")
+      df$fecha <- format(df$fecha, "%d %b %Y")
+      df$fecha <- factor(df$fecha, levels = unique(df$fecha))
+      plot_ly(df,x = ~fecha, y = ~Valor, color = ~modelo, type = 'scatter', mode = 'lines+markers', colors = c('#DA261E', '#05ABAB','#5D0664')) %>% 
+        layout(legend=list(title=list(text='modelo')), xaxis = list(title = "fecha",dtick=15), yaxis = list(title = tipo_dato2()))
+    }else if (input$per2 == "mensual"){
+      df <- rv_val_mes_wfm() %>%
+        pivot_longer(cols = c(real, pred_wfm,pred_prophet), names_to = "modelo", values_to = "Valor")
+      df$modelo<-as.factor(df$modelo)
+      df$modelo <- factor(df$modelo, levels = c("real", "pred_wfm","pred_prophet"))
+      levels(df$modelo) <- c("Real","WFM","Prophet")
+      df$fecha <- format(df$fecha, "%d %b %Y")
+      df$fecha <- factor(df$fecha, levels = unique(df$fecha))
+      plot_ly(df,x = ~fecha, y = ~Valor, color = ~modelo, type = 'scatter', mode = 'lines+markers', colors = c('#DA261E','#05ABAB', '#5D0664')) %>% 
+        layout(legend=list(title=list(text='modelo')), xaxis = list(title = "fecha"), yaxis = list(title = tipo_dato2()))
+    }
+  })
   #Titulo página validación
   output$title_validacion_plot <- renderText({
     paste("Validación", "-", input$camp2, input$linea2, sep = " ")
   })
+  
+  #Titulo página validación wfm
+  output$title_validacion_wfm <- renderText({
+    paste("WFM VS PROPHET", "-", input$camp2, input$linea2, sep = " ")
+  })
+
   
   #Tabla errores mejor modelo
   tabla_val<-reactive({
@@ -952,6 +1052,26 @@ shinyServer(function(input, output,session) {
   output$table_val <- renderTable({
     tabla_val()
   })
+  
+  #Tabla errores wfm
+  tabla_val_wfm<-reactive({
+    if (input$per2 == "mensual"){
+      wfm<-round(wape(actuals=val_mes_wfm()[val_mes_wfm()$linea == input$linea2 & val_mes_wfm()$target == input$tag2,]$real, preds=val_mes_wfm()[val_mes_wfm()$linea == input$linea2 & val_mes_wfm()$target == input$tag2,]$pred_wfm),2)
+      prophet<-round(wape(actuals=val_mes_wfm()[val_mes_wfm()$linea == input$linea2 & val_mes_wfm()$target == input$tag2,]$real, preds=val_mes_wfm()[val_mes_wfm()$linea == input$linea2 & val_mes_wfm()$target == input$tag2,]$pred_prophet),2)
+      
+      data.frame(linea = input$linea2, target = input$tag2,WAPE_wfm = paste(wfm,"%"), WAPE_prophet = paste(prophet, "%"))
+      }else if(input$per2 == "diaria"){
+        wfm<-round(wape(actuals=validacion_diaria_wfm[validacion_diaria_wfm$linea == input$linea2 & validacion_diaria_wfm$target == input$tag2,]$real, preds=validacion_diaria_wfm[validacion_diaria_wfm$linea == input$linea2 & validacion_diaria_wfm$target == input$tag2,]$pred_wfm),2)
+        prophet<-round(wape(actuals=validacion_diaria_wfm[validacion_diaria_wfm$linea == input$linea2 & validacion_diaria_wfm$target == input$tag2,]$real, preds=validacion_diaria_wfm[validacion_diaria_wfm$linea == input$linea2 & validacion_diaria_wfm$target == input$tag2,]$pred_prophet),2)
+        
+        data.frame(linea = input$linea2, target = input$tag2,WAPE_wfm = paste(wfm,"%"), WAPE_prophet = paste(prophet, "%"))
+        
+      }
+  })
+  output$table_val_wfm <- renderTable({
+    tabla_val_wfm()
+  })
+  
   
   #Titulo tabla errores mejor modelo
   output$title_validacion_table <- renderText({
@@ -1162,8 +1282,10 @@ shinyServer(function(input, output,session) {
     df_sindupl$mes_name<-month.name[df_sindupl$mes]
     df_sindupl$mes = format(df_sindupl$fecha,"%B")
     df_sindupl$mes_abr <- format(df_sindupl$fecha, "%b", locale = "es_ES")
-    
-    
+    df_sindupl$mes_abr = factor(df_sindupl$mes_abr, labels  = c("abr","ago","dic","feb","ene","jul",   
+                                              "jun", "mar","may","nov","oct","sep"))
+    monthorder = c("ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic")
+    df_sindupl$mes_abr = factor(df_sindupl$mes_abr, levels = monthorder)
     df_pre_aju<-filter(df_sindupl, negocio ==input$camp3 & linea== input$linea3)
     
     return(df_pre_aju)
@@ -1489,7 +1611,6 @@ shinyServer(function(input, output,session) {
   output$Ajuste_pre_plot_mes <- renderPlotly({
     monthorder<-c("enero","febrero","marzo", "abril","mayo", "junio","julio",
                   "agosto", "septiembre","octubre","noviembre","diciembre")
-    
     df <- df_pre_ajus_dia() %>%
       group_by(año,mes) %>%
       summarise(real_calls_f=sum(real_calls),aht_calls_m=sum(real_calls*real_aht),
@@ -1497,8 +1618,10 @@ shinyServer(function(input, output,session) {
       mutate(real_aht=(aht_calls_m/real_calls_f))%>%
       ungroup()
     df$año<-as.factor(df$año)
+    df$mes = factor(df$mes, labels  = c("abril","agosto","diciembre","febrero","enero","julio",
+                                            "junio", "marzo","mayo","noviembre","octubre","septiembre"))
+    df$mes = factor(df$mes, levels = monthorder)
     df<-df[order(match(df$mes,monthorder)),]
-    
     
     if(input$tag3 == "Trafico"){
       
@@ -1553,10 +1676,6 @@ shinyServer(function(input, output,session) {
     
   })
 
-  # output$tablita  <- renderDataTable({
-  #   df_pre_ajus_desv_cls()
-  #  })
-  
   #Creacion tabla de desviaciones
   df_desv<-reactive({
     
@@ -1564,17 +1683,18 @@ shinyServer(function(input, output,session) {
       
       df_pre <- df_pre_ajus_desv_cls() %>%
         pivot_wider(names_from = mes_abr, values_from = desv_inter)
+      
       df_pre <- arrange(df_pre, año)
-      df_pre1<- select(df_pre, año, ene., feb., mar., abr., may., jun.,
-                       jul., ago., sep., oct., nov., dic.)
+      df_pre1<- select(df_pre, año, ene, feb, mar, abr, may, jun,
+                       jul, ago, sep, oct, nov, dic)
       return(df_pre1)
       
     }else if(input$tag3 == "AHT"){
       df_pre_aht <- df_pre_ajus_desv_aht() %>%
         pivot_wider(names_from = mes_abr, values_from = desv_aht)
       df_pre_aht <- arrange(df_pre_aht, año)
-      df_pre_aht1<- select(df_pre_aht, año, ene., feb., mar., abr., may., jun.,
-                           jul., ago., sep., oct., nov., dic.)
+      df_pre_aht1<- select(df_pre_aht, año, ene, feb, mar, abr, may, jun,
+                           jul, ago, sep, oct, nov, dic)
       return(df_pre_aht1)
       
     }
@@ -1638,16 +1758,23 @@ shinyServer(function(input, output,session) {
     negocio<-input$camp3
     dfp <- filter(pred_diaria, target == target, negocio == negocio, linea == linea)
     dfp$mes_abr<- format(dfp$fecha, "%b", locale = "es_ES")
+    c("ene","feb","mar","abr",
+                                                            "may","jun","jul","ago","sep","oct","nov","dic")
     dfp1<-dfp %>% select(año,mes_abr,mes,dia,dia_semana,prediccion,linea,negocio,target,fecha)
     
     participacion2 <- dfp1 %>% group_by(año, mes) %>% summarise(llamadas = sum(prediccion),fecha=min(fecha))
     participacion2$part. <- 0.00
     participacion2$mes_abr<- format(participacion2$fecha, "%b", locale = "es_ES")
+    participacion2$mes_abr = factor(participacion2$mes_abr, labels  = c("abr","ago","dic","jul",   
+                                                                "jun","may","nov","oct","sep"))
+    monthorder = c("abr","may","jun","jul","ago","sep","oct","nov","dic")
+    participacion2$mes_abr = factor(participacion2$mes_abr, levels = monthorder)
+    participacion2<-participacion2[order(match(participacion2$mes_abr,monthorder)),]
     participacion3 <- participacion2 %>% select(año, mes_abr, part.)
     participacion_pivot<-participacion3 %>%
       pivot_wider(names_from = mes_abr, values_from = part.)
-    orden_meses <- c("año","ene.", "feb.", "mar.", "abr.", "may.", "jun.", 
-                     "jul.", "ago.", "sep.", "oct.", "nov.", "dic.")
+    orden_meses <- c("año", "abr", "may", "jun", 
+                     "jul", "ago", "sep", "oct", "nov", "dic")
     participacion_pivot <- participacion_pivot[, order(match(colnames(participacion_pivot), orden_meses))]
     df <- participacion_df()
     key <- paste0(negocio," - ", linea, " - ", target)
@@ -1830,6 +1957,12 @@ shinyServer(function(input, output,session) {
     participacion2 <- dfp1 %>% group_by(año, mes) %>% summarise(llamadas = sum(prediccion), fecha = min(fecha))
     participacion2$part_tot <- 0.00
     participacion2$mes_abr <- format(participacion2$fecha, "%b", locale = "es_ES")
+    participacion2$mes_abr = factor(participacion2$mes_abr, labels  = c("abr","ago","dic","jul",   
+                                                                        "jun","may","nov","oct","sep"))
+    monthorder = c("abr","may","jun","jul","ago","sep","oct","nov","dic")
+    participacion2$mes_abr = factor(participacion2$mes_abr, levels = monthorder)
+    participacion2<-participacion2[order(match(participacion2$mes_abr,monthorder)),]
+    
     participacion3 <- participacion2 %>% select(año, mes_abr, part_tot)
     
     df <- participacion_df_1()
@@ -1890,7 +2023,6 @@ shinyServer(function(input, output,session) {
   
   df_ajustes<-reactive({
     df<-merge(participacion_df_t_1(), participacion_df_t(), by = c("año","mes_abr"))
-    
   })
   
   #Calculo predicciones con las participaciones editadas (predicciones ajustadas)
@@ -1901,14 +2033,18 @@ shinyServer(function(input, output,session) {
     if (!is.null(linea)) {
       
       dfp <- filter(pred_diaria, target == input$tag3, negocio == input$camp3, linea == linea)
-      dfp$mes_abr<- format(dfp$fecha, "%b", locale = "es_ES")
-      dfp1<-dfp %>% select(año,mes_abr,mes,dia,dia_semana,prediccion,linea,negocio,target,fecha)
       
+      dfp$mes_abr<- format(dfp$fecha, "%b", locale = "es_ES")
+      dfp$mes_abr = factor(dfp$mes_abr, labels  = c("abr","ago","dic","jul",   
+                                                                          "jun","may","nov","oct","sep"))
+      monthorder = c("abr","may","jun","jul","ago","sep","oct","nov","dic")
+      dfp$mes_abr = factor(dfp$mes_abr, levels = monthorder)
+      
+      dfp1<-dfp %>% select(año,mes_abr,mes,dia,dia_semana,prediccion,linea,negocio,target,fecha)
       df_ajus<-merge(dfp1,df_ajustes(), by.x = c(1, 2), by.y = c(1, 2))
       df_ajus$fecha <- paste(df_ajus$año, df_ajus$mes, df_ajus$dia, sep="-") %>% ymd() %>% as.Date()
       df_ajus$Ajuste_t_pred<-ifelse(df_ajus$prediccion==0,0,round((df_ajus$part_tot*(df_ajus$prediccion-1))+df_ajus$prediccion,0))
       df_ajus$ajuste_prediccion<-ifelse(df_ajus$Ajuste_t_pred==0,0,round((df_ajus$part.*(df_ajus$Ajuste_t_pred-1))+df_ajus$Ajuste_t_pred,0))
-      
       return(df_ajus)
     }
   })
@@ -1918,20 +2054,30 @@ shinyServer(function(input, output,session) {
     df_ajus1<-df_p2() %>%
       select(fecha, linea, negocio, ajuste_prediccion, año, mes, dia)
     
+    
     dfr<-filter(data,negocio==input$camp3,linea==input$linea3) %>%
       select(fecha, linea, negocio, real_calls, año, mes, dia)
-    names(dfr)[which(names(dfr) == "real_calls")] <- "ajuste_prediccion"
     
+    names(dfr)[which(names(dfr) == "real_calls")] <- "ajuste_prediccion"
+  
     
     df_real_frc<- rbind(dfr, df_ajus1)
+    df_real_frc <- filter(df_real_frc, linea==input$linea3)
+    
+    
     df_real_frc$combinado <- paste(df_real_frc$año, df_real_frc$mes, df_real_frc$dia, df_real_frc$negocio, df_real_frc$linea, sep = "-")
     
     df_real_frc <- subset(df_real_frc, !duplicated(combinado, fromLast = TRUE))
     df_limp_pred1 <- df_real_frc[complete.cases(df_real_frc), ]
     df_limp_pred1=df_limp_pred1[-8]
+    df_limp_pred1$mes = format(df_limp_pred1$fecha,"%B")
     df_limp_pred1$mes_abr <- format(df_limp_pred1$fecha, "%b", locale = "es_ES")
+    df_limp_pred1$mes_abr = factor(df_limp_pred1$mes_abr, labels  = c("abr","ago","dic","feb","ene","jul",   
+                                                                "jun", "mar","may","nov","oct","sep"))
+    monthorder = c("ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic")
+    df_limp_pred1$mes_abr = factor(df_limp_pred1$mes_abr, levels = monthorder)
     df_limp_pred1$mes_b = format(df_limp_pred1$fecha,"%B")
-    
+    print(filter(df_limp_pred1, año==2024 & mes == "abril"))
     return(df_limp_pred1)
     
   })
@@ -1941,11 +2087,14 @@ shinyServer(function(input, output,session) {
     
     df_ajus1<-df_p2()%>%
       select(fecha, linea, negocio, ajuste_prediccion, año, mes, dia)
+
     
     dfr<-filter(data,negocio==input$camp3,linea==input$linea3) %>%
       select(fecha, linea, negocio, real_aht, año, mes, dia)
+    
     names(dfr)[which(names(dfr) == "real_aht")] <- "ajuste_prediccion"
     
+    print(dfr)
     df_real_frc<- rbind(dfr, df_ajus1)
     
     df_real_frc$combinado <- paste(df_real_frc$año, df_real_frc$mes, df_real_frc$dia, df_real_frc$negocio, df_real_frc$linea, sep = "-")
@@ -1966,8 +2115,14 @@ shinyServer(function(input, output,session) {
     
     df_real_clls2=df_real_clls2[-7]
     df_limp_predaht<-merge(df_limp_pred1,df_real_clls2,by =c("linea","negocio","año","mes","dia"))
+    df_limp_predaht$mes = format(df_limp_predaht$fecha,"%B")
     df_limp_predaht$mes_abr <- format(df_limp_predaht$fecha, "%b", locale = "es_ES")
+    df_limp_predaht$mes_abr = factor(df_limp_predaht$mes_abr, labels  = c("abr","ago","dic","feb","ene","jul",   
+                                                                      "jun", "mar","may","nov","oct","sep"))
+    monthorder = c("ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic")
+    df_limp_predaht$mes_abr = factor(df_limp_predaht$mes_abr, levels = monthorder)
     df_limp_predaht$mes_b = format(df_limp_predaht$fecha,"%B")
+    
     return(df_limp_predaht)
     
   })
@@ -1976,18 +2131,15 @@ shinyServer(function(input, output,session) {
   df_mes_ajuste <- reactive({
     
     if(input$tag3 == "Trafico"){
-      
       df<- df_concat_calls() %>%
-        group_by(año,mes,mes_b) %>%
-        summarise(ajuste_prediccion=sum(ajuste_prediccion)) %>%
-        ungroup()
+        group_by(año,mes) %>%
+        summarise(ajuste_prediccion=sum(ajuste_prediccion)) 
       df$año<-as.factor(df$año)
-      
       return(df)
       
     }else if(input$tag3 == "AHT"){
       df<-df_concat() %>%
-        group_by(año,mes,mes_b) %>%
+        group_by(año,mes) %>%
         summarise(aht_calls=sum(ajuste_prediccion*real_calls),calls=sum(real_calls)) %>%
         mutate(ajuste_prediccion=(aht_calls/calls)) %>%
         ungroup()
@@ -2002,7 +2154,12 @@ shinyServer(function(input, output,session) {
     
     monthorder<-c("enero","febrero","marzo", "abril","mayo", "junio","julio",
                   "agosto", "septiembre","octubre","noviembre","diciembre")
-    df<-df_mes_ajuste()[order(match(df_mes_ajuste()$mes,monthorder)),]
+    
+    df<-df_mes_ajuste()
+    df$mes = factor(df$mes, labels  = c("abril","agosto","diciembre","febrero","enero","julio",
+                                        "junio", "marzo","mayo","noviembre","octubre","septiembre"))
+    df$mes = factor(df$mes, levels = monthorder)
+    df<-df[order(match(df$mes,monthorder)),]
     plot_ly(df, x = ~mes, y = ~ajuste_prediccion, color = ~factor(año), colors = c('#DA261E','#D1B2D1','#09B56B', '#5D0664', '#05ABAB', '#81CBF5'), type = 'scatter', mode = 'lines')  %>%
       layout(
         xaxis = list(title = "fecha",categoryorder = "array",
@@ -2041,8 +2198,8 @@ shinyServer(function(input, output,session) {
     df_pre <- df_mes_desv() %>%
       pivot_wider(names_from = mes_abr, values_from = desv)
     df_pre <- arrange(df_pre, año)
-    df_pre1<- select(df_pre, año, ene., feb., mar., abr., may., jun.,
-                     jul., ago., sep., oct., nov., dic.)
+    df_pre1<- select(df_pre, año, ene, feb, mar, abr, may, jun,
+                     jul, ago, sep, oct, nov, dic)
     return(df_pre1)
     
   })
@@ -2144,10 +2301,12 @@ shinyServer(function(input, output,session) {
   pred_aju <- reactive({
     if(estado1()) {
       predi <-pre_ajus_mes()
+      predi <- filter(predi, linea==input$linea3)
       predi %>% mutate(mes = format(predi$fecha, "%B", locale = "es_ES"))%>%
         select(año, mes, negocio, linea, target, ajuste_prediccion)
     } else {
       predi<-pred_aju_dia1()
+      predi <- filter(predi, linea==input$linea3)
       predi<-predi[-4]
       predi%>% select(fecha,negocio, linea, target, ajuste_prediccion)
     }

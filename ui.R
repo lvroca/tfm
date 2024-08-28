@@ -70,6 +70,8 @@ validacion_diaria$pred_fb <- ifelse(validacion_diaria$target == "Trafico", round
 validacion_diaria$pred_gru <- ifelse(validacion_diaria$target == "Trafico", round(validacion_diaria$pred_gru, 0),
                                               ifelse(validacion_diaria$target == "AHT", round(validacion_diaria$pred_gru, 2), validacion_diaria$pred_gru))
 
+# Importacion validacion wfm
+validacion_diaria_wfm <- read_excel("validacion_diaria_wfm.xlsx")
 
 #Importación datos predicción
 pred_diaria_calls <- read_excel("prediccion_calls.xlsx")[,-1]
@@ -254,7 +256,7 @@ shinyUI(fluidPage(
         style = "background-color: white;",
         tabsetPanel(
           tabPanel(
-            "Validación del modelo",
+            "Comparación de modelos",
             align= "center",
             textOutput("title_validacion_plot"),
             tags$head(tags$style('#title_validacion_plot{font-size:20px;font-style: normal;
@@ -275,6 +277,16 @@ shinyUI(fluidPage(
             tags$head(tags$style('#title_val_plot_m{font-size:18px;font-style: normal;
                                        font-family: "Calibri";font-weight: bold;}')),
             plotlyOutput("validacion_plot", height = "200px",width = "100%")
+          ),
+          tabPanel(
+           "Validación del modelo",
+             align= "center",
+             textOutput("title_validacion_wfm"),
+             tags$head(tags$style('#title_validacion_wfm{font-size:20px;font-style: normal;
+                                        font-family: "Calibri";font-weight: bold;}')),
+             plotlyOutput("seppppp", height = "20px"),
+             tableOutput(outputId = "table_val_wfm"),
+             plotlyOutput("val_plot_wfm", height = "200px",width = "100%")
           ),
         )
       )
@@ -354,7 +366,6 @@ shinyUI(fluidPage(
                                        font-family: "Calibri";font-weight: bold;}')),
             plotlyOutput("Ajuste_pre_plot_mes", height = "200px",width = "100%"),
             textOutput("title_pred_table_desv"),
-            dataTableOutput(outputId = "tablita"),
             tags$head(tags$style('#title_pred_table_desv{font-size:18px;font-style: normal;
                                        font-family: "Calibri";font-weight: bold;}')),
             DTOutput(outputId = "Ajuste_pre_tabla"),
